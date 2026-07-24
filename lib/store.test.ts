@@ -57,7 +57,7 @@ describe('useTransactionStore — bounded growth', () => {
 
     const { transactions } = useTransactionStore.getState();
     expect(transactions['tx-inflight']).toBeDefined();
-    expect(transactions['tx-inflight'].status).toBe('broadcasting');
+    expect(transactions['tx-inflight']?.status).toBe('broadcasting');
   });
 
   it('clearTransactions empties the store and its bookkeeping', async () => {
