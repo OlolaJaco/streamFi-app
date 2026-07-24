@@ -152,7 +152,8 @@ export default function StreamsPage() {
       {error && (
         <div
           role="alert"
-          className="border border-gray-200 dark:border-gray-800 p-4 text-sm text-gray-500 dark:text-gray-400 mb-4"
+          aria-live="polite"
+          className="border border-gray-200 dark:border-gray-800 rounded p-4 text-sm text-gray-500 dark:text-gray-400 mb-4"
         >
           {error}
         </div>
