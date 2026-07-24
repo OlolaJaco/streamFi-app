@@ -42,15 +42,17 @@ import { useTransactionStore } from '@/lib/store';
  * A simple mutual-exclusion lock (binary semaphore).
  * Used to protect single-access resources like the Freighter popup.
  */
-class Mutex {
+export class Mutex {
   private _locked = false;
   private _queue: Array<(release: () => void) => void> = [];
 
   async acquire(abortSignal?: AbortSignal): Promise<() => void> {
     return new Promise<() => void>((resolve, reject) => {
+      let entry: ((release: () => void) => void) | undefined;
+
       // If already locked, queue the request
       if (this._locked) {
-        const entry = (release: () => void) => {
+        entry = (release: () => void) => {
           if (abortSignal?.aborted) {
             reject(new Error('Operation aborted'));
             return;
@@ -68,8 +70,10 @@ class Mutex {
       } else if (abortSignal) {
         abortSignal.addEventListener('abort', () => {
           // Remove this entry from queue if it hasn't been resolved yet
-          const idx = this._queue.indexOf(entry!);
-          if (idx !== -1) this._queue.splice(idx, 1);
+          if (entry) {
+            const idx = this._queue.indexOf(entry);
+            if (idx !== -1) this._queue.splice(idx, 1);
+          }
           reject(new Error('Operation aborted'));
         }, { once: true });
       }
