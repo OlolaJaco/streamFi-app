@@ -4,7 +4,7 @@ import React, { useEffect } from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createRoot } from 'react-dom/client';
 import { act } from 'react';
-import { WalletProvider, useWallet } from './WalletContext';
+import { WalletProvider, useWallet, Mutex } from './WalletContext';
 import * as freighter from '@stellar/freighter-api';
 
 vi.mock('@stellar/freighter-api', () => ({
@@ -78,5 +78,49 @@ describe('WalletContext', () => {
     expect(localStorage.getItem('conduit:wallet')).toBeNull();
 
     document.body.removeChild(container);
+  });
+});
+
+// The Mutex guarding connect() under concurrent "connect wallet" clicks
+// serializes access via a wait queue. When a queued waiter's AbortSignal
+// fires, its entry must be dequeued and its acquire() promise rejected —
+// this is what the initialization path relies on to stay responsive under
+// heavy load (many rapid connect attempts) instead of leaving a stale
+// entry hanging.
+describe('Mutex — queued acquire under load', () => {
+  it('lets a second acquire() through once the first releases', async () => {
+    const mutex = new Mutex();
+    const release1 = await mutex.acquire();
+
+    let acquired2 = false;
+    const p2 = mutex.acquire().then((release) => {
+      acquired2 = true;
+      return release;
+    });
+
+    expect(acquired2).toBe(false); // still queued behind release1
+    release1();
+
+    const release2 = await p2;
+    expect(acquired2).toBe(true);
+    release2();
+  });
+
+  it('rejects a queued waiter when its AbortSignal fires, without corrupting the queue', async () => {
+    const mutex = new Mutex();
+    const release1 = await mutex.acquire();
+
+    const controller = new AbortController();
+    const queuedAcquire = mutex.acquire(controller.signal);
+
+    controller.abort();
+    await expect(queuedAcquire).rejects.toThrow(/aborted/i);
+
+    // The mutex must still be usable afterwards — the aborted entry should
+    // have been cleanly removed from the queue, not left dangling.
+    release1();
+    const release3 = await mutex.acquire();
+    expect(typeof release3).toBe('function');
+    release3();
   });
 });
