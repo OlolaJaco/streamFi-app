@@ -16,6 +16,7 @@ export function BatchStreamCreator() {
   const [rateInput, setRateInput] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const isSubmittingRef = useRef(false);
   const isMountedRef = useRef(true);
@@ -37,7 +38,7 @@ export function BatchStreamCreator() {
   const addRecipient = () => {
     if (!addressInput || !rateInput) return;
     if (!/^\d+$/.test(rateInput)) {
-      alert("Invalid rate input. Must be a positive integer.");
+      setError("Invalid rate input. Must be a positive integer.");
       return;
     }
     try {
@@ -45,8 +46,9 @@ export function BatchStreamCreator() {
       setRecipients([...recipients, { address: addressInput, ratePerSecond: rate }]);
       setAddressInput('');
       setRateInput('');
+      setError(null);
     } catch (e) {
-      alert("Invalid rate input. Must be an integer.");
+      setError("Invalid rate input. Must be an integer.");
     }
   };
 
@@ -58,6 +60,7 @@ export function BatchStreamCreator() {
     if (recipients.length === 0 || isSubmittingRef.current) return;
     isSubmittingRef.current = true;
     setIsSubmitting(true);
+    setError(null);
     try {
       // Simulate interaction with SDK ConduitBatcher
       await new Promise<void>((resolve) => {
@@ -69,10 +72,10 @@ export function BatchStreamCreator() {
       if (!isMountedRef.current) return;
       setSuccess(true);
       setRecipients([]);
-    } catch (error) {
+    } catch (submitError) {
       if (!isMountedRef.current) return;
-      console.error("Batch creation failed", error);
-      alert("Failed to submit batch transaction.");
+      console.error("Batch creation failed", submitError);
+      setError("Failed to submit batch transaction. Please try again.");
     } finally {
       isSubmittingRef.current = false;
       if (isMountedRef.current) {
@@ -96,7 +99,13 @@ export function BatchStreamCreator() {
   return (
     <div className="card max-w-2xl mx-auto p-6">
       <h2 className="text-2xl font-bold mb-4">Batch Stream Creation</h2>
-      
+
+      {error && (
+        <div role="alert" className="border border-gray-200 dark:border-gray-800 p-4 text-sm text-gray-500 dark:text-gray-400 mb-4">
+          {error}
+        </div>
+      )}
+
       <div className="flex gap-2 mb-4">
         <input 
           className="input flex-1" 

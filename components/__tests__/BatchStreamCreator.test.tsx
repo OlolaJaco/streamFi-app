@@ -108,3 +108,35 @@ describe('BatchStreamCreator — unmount safety during submission', () => {
     document.body.removeChild(container);
   });
 });
+
+// CONTRIBUTING.md: "Display errors inline, never alert()". This component
+// used alert() for all three of its error paths.
+describe('BatchStreamCreator — inline error display (no alert())', () => {
+  const alertSpy = vi.fn();
+
+  beforeEach(() => {
+    vi.stubGlobal('alert', alertSpy);
+    alertSpy.mockClear();
+  });
+
+  it('shows an inline error instead of alert() for an invalid rate', () => {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+
+    act(() => {
+      root.render(<BatchStreamCreator />);
+    });
+
+    addRecipient(container, 'GRECIPIENT1234567890', '1.5'); // fails the digits-only check
+
+    expect(alertSpy).not.toHaveBeenCalled();
+    expect(container.querySelector('[role="alert"]')).not.toBeNull();
+    expect(container.textContent).toContain('Invalid rate input');
+
+    act(() => {
+      root.unmount();
+    });
+    document.body.removeChild(container);
+  });
+});
