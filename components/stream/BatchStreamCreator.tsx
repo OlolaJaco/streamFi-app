@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Badge } from '@/components/ui/Badge';
 import { ProgressBar } from '@/components/ui/ProgressBar';
 import { truncateAddress } from '@/lib/format';
@@ -18,6 +18,21 @@ export function BatchStreamCreator() {
   const [success, setSuccess] = useState(false);
 
   const isSubmittingRef = useRef(false);
+  const isMountedRef = useRef(true);
+  const pendingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+      // Under poor network conditions the simulated submission can still
+      // be pending when the user navigates away — cancel it rather than
+      // leaving it running against a detached component.
+      if (pendingTimerRef.current) {
+        clearTimeout(pendingTimerRef.current);
+        pendingTimerRef.current = null;
+      }
+    };
+  }, []);
 
   const addRecipient = () => {
     if (!addressInput || !rateInput) return;
@@ -45,15 +60,24 @@ export function BatchStreamCreator() {
     setIsSubmitting(true);
     try {
       // Simulate interaction with SDK ConduitBatcher
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await new Promise<void>((resolve) => {
+        pendingTimerRef.current = setTimeout(() => {
+          pendingTimerRef.current = null;
+          resolve();
+        }, 2000);
+      });
+      if (!isMountedRef.current) return;
       setSuccess(true);
       setRecipients([]);
     } catch (error) {
+      if (!isMountedRef.current) return;
       console.error("Batch creation failed", error);
       alert("Failed to submit batch transaction.");
     } finally {
       isSubmittingRef.current = false;
-      setIsSubmitting(false);
+      if (isMountedRef.current) {
+        setIsSubmitting(false);
+      }
     }
   };
 
