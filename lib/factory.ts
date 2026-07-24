@@ -2,10 +2,19 @@
  * DripFactory contract call wrappers for conduit-app.
  */
 
-import { Address, nativeToScVal } from '@stellar/stellar-sdk';
+import { Address, nativeToScVal, xdr } from '@stellar/stellar-sdk';
 import { invokeContract, simulateReadOnly, scValToU64 } from './soroban';
 import { tryGetFactoryContractId } from './env';
 import { SENDER_STREAM_IDS, RECIPIENT_STREAM_IDS, MOCK_STREAM_IDS } from './mock-data';
+
+/** Decode a vec-of-u64 RPC result, rejecting any other shape with a clear error. */
+function decodeU64Vec(result: xdr.ScVal): bigint[] {
+  const vec = result.vec();
+  if (!vec) {
+    throw new Error(`Malformed RPC payload: expected a vec, got ${result.switch().name}`);
+  }
+  return vec.map(v => scValToU64(v));
+}
 
 let _factory: string | undefined;
 function FACTORY(): string | undefined {
@@ -38,7 +47,7 @@ export async function streamsBySender(
     nativeToScVal(offset, { type: 'u32' }),
     nativeToScVal(limit,  { type: 'u32' }),
   ]);
-  return result.vec()!.map(v => scValToU64(v));
+  return decodeU64Vec(result);
 }
 
 /** Stream IDs received by a recipient address (paginated) */
@@ -54,7 +63,7 @@ export async function streamsByRecipient(
     nativeToScVal(offset, { type: 'u32' }),
     nativeToScVal(limit,  { type: 'u32' }),
   ]);
-  return result.vec()!.map(v => scValToU64(v));
+  return decodeU64Vec(result);
 }
 
 // ── Mutating ──────────────────────────────────────────────────────────────────
