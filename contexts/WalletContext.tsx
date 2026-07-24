@@ -231,6 +231,11 @@ export function WalletProvider({
   const abortControllerRef = useRef<AbortController | null>(null);
   const semaphoreRef = useRef<Semaphore>(new Semaphore(maxConcurrentOperations));
   const connectMutexRef = useRef<Mutex>(new Mutex());
+  // Tracks the most recent connect() attempt's own controller, so a queued
+  // attempt still waiting on connectMutexRef can be cancelled the moment
+  // it's superseded — instead of silently taking its turn in the mutex
+  // queue before self-discarding via the requestId check below.
+  const pendingConnectAbortRef = useRef<AbortController | null>(null);
 
   // Access the Zustand store's reset action outside of a component render
   const clearTransactions = useTransactionStore((s) => s.clearTransactions);
@@ -275,7 +280,20 @@ export function WalletProvider({
 
   const connect = useCallback(async () => {
     const requestId = ++pendingRequestIdRef.current;
-    const release = await connectMutexRef.current.acquire();
+
+    // A newer connect() call supersedes whatever's still waiting in the
+    // mutex queue — cancel it now rather than let it run its turn.
+    pendingConnectAbortRef.current?.abort();
+    const myAbort = new AbortController();
+    pendingConnectAbortRef.current = myAbort;
+
+    let release: () => void;
+    try {
+      release = await connectMutexRef.current.acquire(myAbort.signal);
+    } catch {
+      // Aborted while queued — the call that superseded us owns cleanup.
+      return;
+    }
     try {
       if (requestId !== pendingRequestIdRef.current || !isMountedRef.current) return;
       setConnecting(true);
@@ -315,6 +333,7 @@ export function WalletProvider({
 
   const disconnect = useCallback(() => {
     pendingRequestIdRef.current += 1;
+    pendingConnectAbortRef.current?.abort();
     setConnecting(false);
     setPublicKey(null);
     setWalletName(null);

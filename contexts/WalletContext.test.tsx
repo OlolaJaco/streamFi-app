@@ -79,6 +79,48 @@ describe('WalletContext', () => {
 
     document.body.removeChild(container);
   });
+
+  it('cancels a connect() attempt still queued behind an in-flight one, under rapid repeated clicks', async () => {
+    // First call acquires the mutex immediately and hangs inside
+    // freighterIsConnected() — simulating heavy load / a slow extension.
+    let resolveFirstCheck: (v: { isConnected: boolean }) => void;
+    mockedFreighter.isConnected.mockImplementationOnce(
+      () => new Promise((r) => { resolveFirstCheck = r; }),
+    );
+
+    const { stateRef, container } = mountWallet();
+    const wallet = stateRef.current;
+
+    await act(async () => {
+      void wallet.connect(); // acquires the mutex, then hangs on isConnected()
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // Second and third calls queue behind the first, each superseding the
+    // last. Only the third should still be "pending" once the first
+    // finishes — the second must never reach freighterIsConnected().
+    await act(async () => {
+      void wallet.connect();
+      void wallet.connect();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      resolveFirstCheck!({ isConnected: false }); // first call finishes (no Freighter)
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // isConnected: 1 call for the first (hung) attempt, 1 for the third
+    // (the one that actually got to run) — the superseded second attempt
+    // was aborted while queued and never called it.
+    expect(mockedFreighter.isConnected).toHaveBeenCalledTimes(2);
+
+    document.body.removeChild(container);
+  });
 });
 
 // The Mutex guarding connect() under concurrent "connect wallet" clicks
