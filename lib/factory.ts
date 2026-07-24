@@ -16,6 +16,21 @@ function isMock(): boolean {
   return !FACTORY();
 }
 
+const MAX_U32 = 0xffff_ffff;
+
+function validatePage(offset: number, limit: number): void {
+  if (
+    !Number.isSafeInteger(offset) ||
+    !Number.isSafeInteger(limit) ||
+    offset < 0 ||
+    limit < 0 ||
+    offset > MAX_U32 ||
+    limit > MAX_U32
+  ) {
+    throw new RangeError('Stream pagination values must be unsigned 32-bit integers');
+  }
+}
+
 // ── Read-only ─────────────────────────────────────────────────────────────────
 
 /** Total number of streams ever created */
@@ -31,14 +46,16 @@ export async function streamsBySender(
   sender:  string,
   offset:  number,
   limit:   number,
+  options?: { signal?: AbortSignal },
 ): Promise<bigint[]> {
+  validatePage(offset, limit);
   if (isMock()) return SENDER_STREAM_IDS;
   const result = await simulateReadOnly(source, FACTORY()!, 'streams_by_sender', [
     new Address(sender).toScVal(),
     nativeToScVal(offset, { type: 'u32' }),
     nativeToScVal(limit,  { type: 'u32' }),
-  ]);
-  return result.vec()!.map(v => scValToU64(v));
+  ], options);
+  return result.vec()?.map(v => scValToU64(v)) ?? [];
 }
 
 /** Stream IDs received by a recipient address (paginated) */
@@ -47,14 +64,16 @@ export async function streamsByRecipient(
   recipient: string,
   offset:    number,
   limit:     number,
+  options?:  { signal?: AbortSignal },
 ): Promise<bigint[]> {
+  validatePage(offset, limit);
   if (isMock()) return RECIPIENT_STREAM_IDS;
   const result = await simulateReadOnly(source, FACTORY()!, 'streams_by_recipient', [
     new Address(recipient).toScVal(),
     nativeToScVal(offset, { type: 'u32' }),
     nativeToScVal(limit,  { type: 'u32' }),
-  ]);
-  return result.vec()!.map(v => scValToU64(v));
+  ], options);
+  return result.vec()?.map(v => scValToU64(v)) ?? [];
 }
 
 // ── Mutating ──────────────────────────────────────────────────────────────────

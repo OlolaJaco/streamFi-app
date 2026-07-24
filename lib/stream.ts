@@ -40,7 +40,11 @@ export interface StreamInfo {
 /**
  * Fetch the stream contract address from the factory index.
  */
-export async function getStreamAddress(source: string, streamId: bigint): Promise<string | null> {
+export async function getStreamAddress(
+  source: string,
+  streamId: bigint,
+  options?: { signal?: AbortSignal },
+): Promise<string | null> {
   if (isMock()) return MOCK_ADDRESSES[streamId.toString()] ?? null;
   try {
     const result = await simulateReadOnly(
@@ -48,6 +52,7 @@ export async function getStreamAddress(source: string, streamId: bigint): Promis
       FACTORY()!,
       'stream_address',
       [nativeToScVal(streamId, { type: 'u64' })],
+      options,
     );
     if (result.switch().name === 'scvVoid') return null;
     return Address.fromScVal(result).toString();
@@ -72,7 +77,11 @@ export async function getWithdrawable(source: string, streamAddress: string): Pr
 /**
  * Get the full stream info struct.
  */
-export async function getStreamInfo(source: string, streamAddress: string): Promise<StreamInfo> {
+export async function getStreamInfo(
+  source: string,
+  streamAddress: string,
+  options?: { signal?: AbortSignal },
+): Promise<StreamInfo> {
   if (isMock()) {
     const entry = Object.entries(MOCK_ADDRESSES).find(([, addr]) => addr === streamAddress);
     const fallback: StreamInfo = {
@@ -90,7 +99,7 @@ export async function getStreamInfo(source: string, streamAddress: string): Prom
     };
     return entry ? (MOCK_STREAMS[entry[0]] ?? fallback) : fallback;
   }
-  const result = await simulateReadOnly(source, streamAddress, 'info', []);
+  const result = await simulateReadOnly(source, streamAddress, 'info', [], options);
   const entries = result.map();
 
   if (!entries) throw new Error('Malformed stream info: expected map result');

@@ -147,6 +147,23 @@ describe('invokeContract', () => {
 });
 
 describe('simulateReadOnly', () => {
+  it('rejects invalid timeout limits before starting a request', async () => {
+    const { simulateReadOnly } = await import('./soroban.js');
+    await expect(simulateReadOnly(SOURCE, CONTRACT_ID, 'info', [], { timeoutMs: 0 }))
+      .rejects.toThrow(/Timeout must be a positive safe integer/);
+    expect(mockGetAccount).not.toHaveBeenCalled();
+  });
+
+  it('stops immediately when its request signal is already aborted', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const { simulateReadOnly } = await import('./soroban.js');
+    await expect(simulateReadOnly(SOURCE, CONTRACT_ID, 'info', [], {
+      signal: controller.signal,
+    })).rejects.toThrow(/Operation aborted/);
+    expect(mockGetAccount).not.toHaveBeenCalled();
+  });
+
   it('returns the decoded simulation result', async () => {
     const retval = xdr.ScVal.scvU32(42);
     mockSimulate.mockResolvedValue(simSuccess(retval));

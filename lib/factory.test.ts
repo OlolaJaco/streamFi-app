@@ -54,6 +54,15 @@ describe('streamCount', () => {
 });
 
 describe('streamsBySender / streamsByRecipient', () => {
+  it.each([-1, 0.5, Number.MAX_SAFE_INTEGER + 1])(
+    'rejects an out-of-range pagination value (%s)',
+    async (value) => {
+      const { streamsBySender } = await import('./factory.js');
+      await expect(streamsBySender(SENDER, SENDER, value, 20)).rejects.toThrow(RangeError);
+      expect(mockSimulateReadOnly).not.toHaveBeenCalled();
+    },
+  );
+
   it('decodes an empty vec as an empty array', async () => {
     mockSimulateReadOnly.mockResolvedValue(xdr.ScVal.scvVec([]));
     const { streamsBySender } = await import('./factory.js');

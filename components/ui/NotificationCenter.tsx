@@ -2,14 +2,16 @@
 
 import { useEffect, useState } from 'react';
 
+const MAX_NOTIFICATIONS = 5;
+
 export function NotificationCenter() {
   const [notifications, setNotifications] = useState<string[]>([]);
 
   useEffect(() => {
     const handleNotification = (event: Event) => {
-      const customEvent = event as CustomEvent;
-      if (customEvent.detail) {
-        setNotifications((prev) => [...prev, customEvent.detail]);
+      const detail = (event as CustomEvent<unknown>).detail;
+      if (typeof detail === 'string' && detail) {
+        setNotifications((prev) => [...prev, detail].slice(-MAX_NOTIFICATIONS));
       }
     };
 

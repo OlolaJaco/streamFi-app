@@ -32,13 +32,14 @@ async function loadRows(
   publicKey: string,
   role: "sender" | "recipient",
   now: number,
+  signal: AbortSignal,
 ): Promise<StreamRow[]> {
   let ids: bigint[];
   try {
     ids =
       role === "sender"
-        ? await streamsBySender(publicKey, publicKey, 0, 50)
-        : await streamsByRecipient(publicKey, publicKey, 0, 50);
+        ? await streamsBySender(publicKey, publicKey, 0, 50, { signal })
+        : await streamsByRecipient(publicKey, publicKey, 0, 50, { signal });
   } catch {
     return [];
   }
@@ -46,18 +47,25 @@ async function loadRows(
   if (!ids || !Array.isArray(ids)) return [];
 
   const rows: StreamRow[] = [];
+  const seen = new Set<string>();
   for (const id of ids) {
+    if (signal.aborted) return [];
+    if (typeof id !== "bigint") continue;
+    const rowId = id.toString();
+    if (seen.has(rowId)) continue;
     try {
-      const addr = await getStreamAddress(publicKey, id);
+      const addr = await getStreamAddress(publicKey, id, { signal });
       if (!addr || typeof addr !== "string") continue;
-      const info = await getStreamInfo(publicKey, addr);
+      const info = await getStreamInfo(publicKey, addr, { signal });
       if (!info || typeof info !== "object") continue;
       if (typeof info.ratePerSecond !== "bigint") continue;
+      if (signal.aborted) return [];
       rows.push({
-        id: id.toString(),
+        id: rowId,
         info,
         status: deriveStatus(info, now),
       });
+      seen.add(rowId);
     } catch {
       /* skip invalid streams */
     }
@@ -84,28 +92,28 @@ export default function DashboardPage() {
       setError(null);
       return;
     }
-    let active = true;
+    const controller = new AbortController();
 
     setLoading(true);
     setError(null);
     const now = Math.floor(Date.now() / 1000);
     Promise.all([
-      loadRows(publicKey, "recipient", now),
-      loadRows(publicKey, "sender", now),
+      loadRows(publicKey, "recipient", now, controller.signal),
+      loadRows(publicKey, "sender", now, controller.signal),
     ])
       .then(([recv, sent]) => {
-        if (!active) return;
+        if (controller.signal.aborted) return;
         setReceiving(recv);
         setSending(sent);
       })
       .catch((e) => {
-        if (!active) return;
+        if (controller.signal.aborted) return;
         console.error(e);
         setError("Failed to load streams. Please try again.");
       })
-      .finally(() => { if (active) setLoading(false); });
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
 
-    return () => { active = false; };
+    return () => controller.abort();
   }, [publicKey]);
 
   const activeCount = useMemo(

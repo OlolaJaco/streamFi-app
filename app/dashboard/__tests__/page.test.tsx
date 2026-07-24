@@ -352,6 +352,23 @@ describe("DashboardPage — heavy load initialization", () => {
     cleanupDashboard(root, container);
   });
 
+  it("renders a stream only once when the indexer returns duplicate IDs", async () => {
+    mockStreamsBySender.mockResolvedValue([]);
+    mockStreamsByRecipient.mockResolvedValue([1n, 1n]);
+    mockGetStreamAddress.mockResolvedValue("CVALIDADDR");
+    mockGetStreamInfo.mockResolvedValue(createStreamInfo());
+
+    const { container, root } = renderDashboard();
+
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    expect(container.querySelectorAll('[data-testid="stream-card"]')).toHaveLength(1);
+    expect(mockGetStreamAddress).toHaveBeenCalledTimes(1);
+    cleanupDashboard(root, container);
+  });
+
   it("renders stats for valid streams", async () => {
     mockStreamsBySender.mockResolvedValue([]);
     mockStreamsByRecipient.mockResolvedValue([1n]);

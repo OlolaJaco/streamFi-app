@@ -138,7 +138,7 @@ async function withRetry<T>(
         BASE_RETRY_MS * Math.pow(2, attempt) + Math.random() * 500,
         MAX_RETRY_MS,
       );
-      await sleep(delay);
+      await sleep(delay, options?.signal);
     }
   }
 
@@ -151,22 +151,47 @@ async function withTimeout<T>(
   promise: Promise<T>,
   ms: number,
   context?: string,
+  signal?: AbortSignal,
 ): Promise<T> {
+  validateTimeout(ms);
+  if (signal?.aborted) throw new OperationAbortedError();
+
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let onAbort: (() => void) | undefined;
   const timeoutPromise = new Promise<never>((_, reject) => {
     timer = setTimeout(() => {
       reject(
         context
           ? new Error(`${context} timed out after ${ms}ms`)
           : new Error(`Operation timed out after ${ms}ms`),
-      );
-    }, ms);
+        );
+      }, ms);
+    onAbort = () => reject(new OperationAbortedError());
+    signal?.addEventListener('abort', onAbort, { once: true });
   });
 
   try {
     return await Promise.race([promise, timeoutPromise]);
   } finally {
     clearTimeout(timer);
+    if (onAbort) signal?.removeEventListener('abort', onAbort);
+  }
+}
+
+function validateTimeout(ms: number): void {
+  if (!Number.isSafeInteger(ms) || ms <= 0) {
+    throw new RangeError('Timeout must be a positive safe integer');
+  }
+}
+
+function validateCall(
+  source: string,
+  contractId: string,
+  method: string,
+  args: xdr.ScVal[],
+): void {
+  if (!source || !contractId || !method || !Array.isArray(args)) {
+    throw new TypeError('Invalid contract call arguments');
   }
 }
 
@@ -208,6 +233,9 @@ export async function invokeContract(
   const timeoutMs = options?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const idempotencyKey = options?.idempotencyKey;
 
+  validateCall(source, contractId, method, args);
+  validateTimeout(timeoutMs);
+
   // If an idempotency key is provided, deduplicate
   const operation = async (): Promise<string> => {
     if (signal?.aborted) throw new OperationAbortedError();
@@ -221,6 +249,7 @@ export async function invokeContract(
         getServer().getAccount(source),
         timeoutMs,
         'getAccount',
+        signal,
       );
       if (signal?.aborted) throw new OperationAbortedError();
 
@@ -238,6 +267,7 @@ export async function invokeContract(
         getServer().simulateTransaction(tx),
         timeoutMs,
         'simulateTransaction',
+        signal,
       );
       if (signal?.aborted) throw new OperationAbortedError();
 
@@ -252,6 +282,9 @@ export async function invokeContract(
       // Sign via wallet (pass signal for cancellation)
       const signedXdr = await signTx(xdrBase64, signal);
       if (signal?.aborted) throw new OperationAbortedError();
+      if (typeof signedXdr !== 'string' || !signedXdr) {
+        throw new TypeError('Wallet returned an invalid signed transaction');
+      }
 
       const signedTx  = TransactionBuilder.fromXDR(signedXdr, passphrase);
 
@@ -260,6 +293,7 @@ export async function invokeContract(
         getServer().sendTransaction(signedTx),
         timeoutMs,
         'sendTransaction',
+        signal,
       );
       if (signal?.aborted) throw new OperationAbortedError();
 
@@ -269,16 +303,20 @@ export async function invokeContract(
 
       // Poll with cancellation support
       const hash = sendResult.hash;
+      if (typeof hash !== 'string' || !hash) {
+        throw new Error('Submission returned no transaction hash');
+      }
       for (let i = 0; i < MAX_POLL_ATTEMPTS; i++) {
         if (signal?.aborted) throw new OperationAbortedError();
 
-        await sleep(POLL_INTERVAL_MS);
+        await sleep(POLL_INTERVAL_MS, signal);
         if (signal?.aborted) throw new OperationAbortedError();
 
         const status = await withTimeout(
           getServer().getTransaction(hash),
           timeoutMs,
           'getTransaction',
+          signal,
         );
 
         if (status.status === SorobanRpc.Api.GetTransactionStatus.SUCCESS) return hash;
@@ -324,6 +362,8 @@ export async function simulateReadOnly(
   const signal = options?.signal;
   const timeoutMs = options?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
+  validateCall(source, contractId, method, args);
+  validateTimeout(timeoutMs);
   if (signal?.aborted) throw new OperationAbortedError();
 
   return withRetry(async () => {
@@ -331,6 +371,7 @@ export async function simulateReadOnly(
       getServer().getAccount(source),
       timeoutMs,
       'simulateReadOnly/getAccount',
+      signal,
     );
     const contract = new Contract(contractId);
     const tx = new TransactionBuilder(account, {
@@ -347,6 +388,7 @@ export async function simulateReadOnly(
       getServer().simulateTransaction(tx),
       timeoutMs,
       'simulateTransaction',
+      signal,
     );
 
     if (signal?.aborted) throw new OperationAbortedError();
@@ -366,7 +408,29 @@ export async function simulateReadOnly(
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)); }
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  if (!Number.isSafeInteger(ms) || ms < 0) {
+    throw new RangeError('Delay must be a non-negative safe integer');
+  }
+  if (signal?.aborted) return Promise.reject(new OperationAbortedError());
+
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(cleanupAndResolve, ms);
+    const onAbort = () => {
+      cleanup();
+      reject(new OperationAbortedError());
+    };
+    const cleanup = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', onAbort);
+    };
+    function cleanupAndResolve() {
+      cleanup();
+      resolve();
+    }
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
+}
 
 /** Convert an i128 ScVal to bigint */
 export function scValToI128(val: xdr.ScVal): bigint {
