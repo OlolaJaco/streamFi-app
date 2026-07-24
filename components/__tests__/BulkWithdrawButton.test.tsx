@@ -33,6 +33,8 @@ describe('BulkWithdrawButton', () => {
       walletName: 'Freighter',
       connect: vi.fn(),
       disconnect: vi.fn(),
+      pendingOperationCount: 0,
+      maxConcurrentOperations: 5,
     });
     mockWithdraw.mockResolvedValue('tx_hash');
   });
@@ -68,6 +70,7 @@ describe('BulkWithdrawButton', () => {
       'C_STREAM_1',
       100n,
       expect.any(Function),
+      expect.anything(),
     );
 
     act(() => {
@@ -103,6 +106,7 @@ describe('BulkWithdrawButton', () => {
       'C_STREAM_A',
       200n,
       expect.any(Function),
+      expect.anything(),
     );
 
     act(() => {
@@ -159,7 +163,7 @@ describe('BulkWithdrawButton', () => {
 
     await act(async () => {
       root.render(
-        <BulkWithdrawButton activeStreams={streams} onComplete={onComplete} />,
+        <BulkWithdrawButton activeStreams={streams} onComplete={onComplete} maxConcurrency={1} />,
       );
     });
 
@@ -169,16 +173,13 @@ describe('BulkWithdrawButton', () => {
       clickPromise = (async () => { button.click(); })();
     });
 
-    await act(async () => {
-      resolveFirstWithdraw();
-      await firstWithdrawPromise;
-    });
-
     act(() => {
       root.unmount();
     });
 
     await act(async () => {
+      resolveFirstWithdraw();
+      await firstWithdrawPromise;
       await clickPromise!;
     });
 

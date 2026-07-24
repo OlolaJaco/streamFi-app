@@ -5,10 +5,11 @@ import { Button } from '@/components/ui/Button';
 import { withBoundedParallel, normalizeError } from '@/lib/safe-operations';
 
 interface StreamEntry {
-  id: string;
+  id?: string;
   info?: {
-    withdrawable: bigint;
-  };
+    withdrawable?: bigint;
+    [key: string]: any;
+  } | any;
 }
 
 interface BulkWithdrawResult {
@@ -28,10 +29,15 @@ export function BulkWithdrawButton({
   maxConcurrency?: number;
 }) {
   const { publicKey, signTx } = useWallet();
-  const mounted = useRef(true);
-  const abortControllerRef = useRef<AbortController | null>(null);
+
   const [isProcessing, setIsProcessing] = useState(false);
-  const [progress, setProgress] = useState({ done: 0, total: 0 });
+  const [progress, setProgress] = useState<{ done: number; total: number }>({
+    done: 0,
+    total: 0,
+  });
+
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const mounted = useRef(true);
 
   useEffect(() => {
     return () => {
@@ -41,14 +47,16 @@ export function BulkWithdrawButton({
   }, []);
 
   const handleBulkWithdraw = useCallback(async () => {
-    if (!publicKey) return;
-    setIsProcessing(true);
-    abortControllerRef.current = new AbortController();
-    const signal = abortControllerRef.current.signal;
+    if (!publicKey || isProcessing) return;
 
-    // Filter streams with withdrawable balance
+    abortControllerRef.current = new AbortController();
+    const { signal } = abortControllerRef.current;
+
+    setIsProcessing(true);
+
     const withdrawableStreams = activeStreams.filter(
-      (s) => s.info?.withdrawable != null && s.info.withdrawable > 0n && s.id,
+      (s): s is StreamEntry & { id: string; info: { withdrawable: bigint } } =>
+        Boolean(s.id) && s.info?.withdrawable != null && s.info.withdrawable > 0n,
     );
 
     setProgress({ done: 0, total: withdrawableStreams.length });
@@ -65,7 +73,7 @@ export function BulkWithdrawButton({
 
         try {
           const streamId = stream.id;
-          const amount = stream.info!.withdrawable!;
+          const amount = stream.info.withdrawable;
           await withdraw(publicKey!, streamId, amount, signTx, signal);
 
           if (mounted.current) {
@@ -75,8 +83,9 @@ export function BulkWithdrawButton({
 
           return { success: true, data: streamId };
         } catch (err) {
-          const normalized = normalizeError(err, `Stream ${stream.id}`);
-          errors.push({ streamId: stream.id, error: normalized.message });
+          const streamId = stream.id;
+          const normalized = normalizeError(err, `Stream ${streamId}`);
+          errors.push({ streamId, error: normalized.message });
 
           if (mounted.current) {
             setProgress((p) => ({ ...p, done: p.done + 1 }));
