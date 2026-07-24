@@ -63,6 +63,7 @@ export default function StreamsPage() {
   const [receiving, setReceiving] = useState<StreamRow[]>([]);
   const [sending, setSending] = useState<StreamRow[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const [statusFilter, setStatusFilter] = useState<"ALL" | StreamStatus>("ALL");
 
@@ -71,11 +72,13 @@ export default function StreamsPage() {
       // Wallet disconnected — clear stale stream rows immediately (fixes #81)
       setReceiving([]);
       setSending([]);
+      setError(null);
       return;
     }
     let active = true;
 
     setLoading(true);
+    setError(null);
     const now = Math.floor(Date.now() / 1000);
     Promise.all([
       loadRows(publicKey, "recipient", now),
@@ -86,7 +89,13 @@ export default function StreamsPage() {
         setReceiving(recv);
         setSending(sent);
       })
-      .catch((e) => { if (active) console.error(e); })
+      .catch((e) => {
+        if (!active) return;
+        console.error(e);
+        setError(e instanceof Error ? e.message : "Failed to load streams.");
+        setReceiving([]);
+        setSending([]);
+      })
       .finally(() => { if (active) setLoading(false); });
 
     return () => { active = false; };
@@ -140,6 +149,14 @@ export default function StreamsPage() {
       </div>
 
       {/* Content */}
+      {error && (
+        <div
+          role="alert"
+          className="border border-gray-200 dark:border-gray-800 p-4 text-sm text-gray-500 dark:text-gray-400 mb-4"
+        >
+          {error}
+        </div>
+      )}
       {!connected ? (
         <div className="card text-center py-12 text-sm text-gray-400 dark:text-gray-500">
           Connect your wallet to see your streams.
