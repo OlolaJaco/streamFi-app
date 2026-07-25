@@ -407,7 +407,14 @@ export function WalletProvider({
     watcher.watch(({ address }) => {
       if (!isMountedRef.current) return;
       if (!publicKeyRef.current) return; // no active session to keep in sync
-      if (!address) return; // no active extension session — ignore
+
+      if (!address) {
+        // Extension locked or app access revoked underneath us — the
+        // session is no longer valid, so tear it down the same way an
+        // explicit Disconnect click would.
+        disconnect();
+        return;
+      }
       if (address === publicKeyRef.current) return; // nothing actually changed
 
       setPublicKey(address);
@@ -417,7 +424,7 @@ export function WalletProvider({
     });
 
     return () => watcher.stop();
-  }, [clearTransactions]);
+  }, [clearTransactions, disconnect]);
 
   // ── signTx ─────────────────────────────────────────────────────────────────
 
