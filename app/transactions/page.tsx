@@ -15,7 +15,7 @@ const STATUS_CLASS: Record<string, string> = {
 };
 
 export default function TransactionsPage() {
-  const { data: txs = [], status, refetch, isRefetching } = useQuery<TransactionRow[]>({
+  const { data: txs = [], status, error, refetch, isRefetching } = useQuery<TransactionRow[]>({
     queryKey: TRANSACTIONS_QUERY_KEY,
     queryFn: fetchTransactionHistoryWithTimeout,
     staleTime: 1000 * 30,
@@ -42,7 +42,7 @@ export default function TransactionsPage() {
                 Couldn&apos;t load transaction history
               </p>
               <p className="text-xs text-gray-500 mt-1">
-                The indexer is unavailable right now. Please try again.
+                {error instanceof Error ? error.message : 'The indexer is unavailable right now. Please try again.'}
               </p>
             </div>
             <button
