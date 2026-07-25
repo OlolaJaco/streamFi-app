@@ -12,14 +12,37 @@ import { toStroops }        from '@/lib/format';
 import { TOKENS_TESTNET, tokenLogoUrl } from '@/lib/tokens';
 import { CopyHashButton }   from '@/components/ui/CopyHashButton';
 import { useDebounce }      from '@/hooks/useDebounce';
+import { queryClient }      from '@/lib/queryClient';
 
 const schema = z.object({
-  recipient:       z.string().min(56, 'Must be a valid Stellar address').max(56),
+  recipient:       z.string()
+    .min(56, 'Must be a valid Stellar address (56 characters)')
+    .max(56, 'Must be a valid Stellar address (56 characters)')
+    .regex(/^G[A-Z0-9]{55}$/, 'Must be a valid Stellar address starting with G'),
   token:           z.string().min(1, 'Select a token'),
   depositAmount:   z.string().regex(/^\d+(\.\d+)?$/, 'Enter a valid amount'),
   durationSeconds: z.coerce.number().min(3600, 'Minimum 1 hour'),
   clawback:        z.boolean(),
 });
+
+/** Timeout for the full create-stream pipeline (simulate + sign + submit + poll). */
+const CREATE_STREAM_TIMEOUT_MS = 60_000;
+
+/**
+ * Race a promise against a timeout. Rejects with a descriptive error
+ * if the operation does not complete within `ms` milliseconds.
+ */
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`${label} timed out after ${ms / 1000}s. The network may be congested — please try again.`));
+    }, ms);
+    promise.then(
+      (val) => { clearTimeout(timer); resolve(val); },
+      (err) => { clearTimeout(timer); reject(err); },
+    );
+  });
+}
 
 type FormValues = z.infer<typeof schema>;
 
@@ -92,16 +115,24 @@ export default function CreatePage() {
       const startTime      = Math.floor(Date.now() / 1000) + 60; // 60s buffer
       const endTime        = startTime + data.durationSeconds;
 
-      const hash = await createStream({
-        sender:     publicKey,
-        recipient:  data.recipient,
-        token:      tokenAddr,
-        deposit:    depositStroops,
-        ratePerSec: rateStroops,
-        startTime,
-        endTime,
-        clawback:   data.clawback,
-      }, signTx);
+      const hash = await withTimeout(
+        createStream({
+          sender:     publicKey,
+          recipient:  data.recipient,
+          token:      tokenAddr,
+          deposit:    depositStroops,
+          ratePerSec: rateStroops,
+          startTime,
+          endTime,
+          clawback:   data.clawback,
+        }, signTx),
+        CREATE_STREAM_TIMEOUT_MS,
+        'Stream creation',
+      );
+
+      // Invalidate all cached queries so the streams/dashboard pages
+      // reflect the newly created stream immediately (fixes #162).
+      await queryClient.invalidateQueries();
 
       setTxHash(hash);
       setTimeout(() => router.push('/streams'), 3000);

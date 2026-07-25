@@ -21,13 +21,24 @@ export function BatchStreamCreator() {
 
   const addRecipient = () => {
     if (!addressInput || !rateInput) return;
+
+    // Validate Stellar address format: G + 55 alphanumeric characters
+    if (!/^G[A-Z0-9]{55}$/.test(addressInput.trim())) {
+      alert("Invalid Stellar address. Must start with G and be 56 characters.");
+      return;
+    }
+
     if (!/^\d+$/.test(rateInput)) {
       alert("Invalid rate input. Must be a positive integer.");
       return;
     }
     try {
       const rate = BigInt(rateInput);
-      setRecipients([...recipients, { address: addressInput, ratePerSecond: rate }]);
+      if (rate <= 0n) {
+        alert("Rate must be greater than zero.");
+        return;
+      }
+      setRecipients([...recipients, { address: addressInput.trim(), ratePerSecond: rate }]);
       setAddressInput('');
       setRateInput('');
     } catch (e) {
@@ -78,7 +89,8 @@ export function BatchStreamCreator() {
           className="input flex-1" 
           placeholder="Recipient Address (G...)" 
           value={addressInput} 
-          onChange={e => setAddressInput(e.target.value)} 
+          onChange={e => setAddressInput(e.target.value.toUpperCase())} 
+          maxLength={56}
         />
         <input 
           className="input w-32" 

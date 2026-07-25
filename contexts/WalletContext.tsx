@@ -48,7 +48,13 @@ class Mutex {
 
   async acquire(abortSignal?: AbortSignal): Promise<() => void> {
     return new Promise<() => void>((resolve, reject) => {
-      let entry: ((release: () => void) => void) | null = null;
+      if (abortSignal?.aborted) {
+        reject(new Error('Operation aborted'));
+        return;
+      }
+
+      let entry: ((release: () => void) => void) | undefined;
+
       // If already locked, queue the request
       if (this._locked) {
         entry = (release: () => void) => {
@@ -64,16 +70,11 @@ class Mutex {
         resolve(() => this._release());
       }
 
-      if (abortSignal?.aborted) {
-        reject(new Error('Operation aborted'));
-      } else if (abortSignal && entry) {
+      if (abortSignal && entry) {
         const queuedEntry = entry;
         abortSignal.addEventListener('abort', () => {
-          // Remove this entry from queue if it hasn't been resolved yet
-          if (entry) {
-            const idx = this._queue.indexOf(entry);
-            if (idx !== -1) this._queue.splice(idx, 1);
-          }
+          const idx = this._queue.indexOf(queuedEntry);
+          if (idx !== -1) this._queue.splice(idx, 1);
           reject(new Error('Operation aborted'));
         }, { once: true });
       }
@@ -167,6 +168,12 @@ class Semaphore {
  */
 const DEFAULT_MAX_CONCURRENT_OPS = 5;
 
+/**
+ * Timeout for wallet connection operations (Freighter API calls).
+ * Prevents infinite hangs if the RPC provider or extension becomes unresponsive.
+ */
+const WALLET_CONNECT_TIMEOUT_MS = 15_000;
+
 // ── Types ────────────────────────────────────────────────────────────────────
 
 export interface OperationResult<T = string> {
@@ -213,6 +220,22 @@ export function useWallet(): WalletState {
 }
 
 // ── Provider ─────────────────────────────────────────────────────────────────
+
+/**
+ * Race a promise against a timeout. Rejects with a clear error if the
+ * promise does not resolve within `ms` milliseconds.
+ */
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`${label} timed out after ${ms / 1000}s — the wallet or network may be unresponsive.`));
+    }, ms);
+    promise.then(
+      (val) => { clearTimeout(timer); resolve(val); },
+      (err) => { clearTimeout(timer); reject(err); },
+    );
+  });
+}
 
 export function WalletProvider({
   children,
@@ -290,7 +313,11 @@ export function WalletProvider({
       // Create a fresh AbortController for this connection cycle
       abortControllerRef.current = new AbortController();
 
-      const { isConnected: hasFreighter } = await freighterIsConnected();
+      const { isConnected: hasFreighter } = await withTimeout(
+        freighterIsConnected(),
+        WALLET_CONNECT_TIMEOUT_MS,
+        'Freighter connection check',
+      );
       if (requestId !== pendingRequestIdRef.current || !isMountedRef.current) return;
 
       if (!hasFreighter) {
@@ -301,7 +328,11 @@ export function WalletProvider({
 
       // Prompts the user for permission if not already granted, then
       // returns the currently-selected address.
-      const { address, error } = await requestAccess();
+      const { address, error } = await withTimeout(
+        requestAccess(),
+        WALLET_CONNECT_TIMEOUT_MS,
+        'Freighter access request',
+      );
       if (requestId !== pendingRequestIdRef.current || !isMountedRef.current) return;
       if (error || !address) {
         throw new Error(error?.message ?? 'Failed to connect to Freighter.');
@@ -347,6 +378,10 @@ export function WalletProvider({
     if (typeof xdr !== 'string' || !xdr.trim()) {
       throw new Error('Invalid transaction payload.');
     }
+    // Basic base64-XDR shape check: should be non-empty base64 characters
+    if (!/^[A-Za-z0-9+/=\s]+$/.test(xdr.trim())) {
+      throw new Error('Invalid transaction payload: not a valid base64 string.');
+    }
 
     const operationAbortController = new AbortController();
     const combinedSignal = signal ?? operationAbortController.signal;
@@ -368,10 +403,14 @@ export function WalletProvider({
 
         const requestId = pendingRequestIdRef.current;
         const currentPublicKey = publicKey;
-        const { signedTxXdr, error } = await signTransaction(xdr, {
-          networkPassphrase: getNetworkPassphrase(),
-          address:           currentPublicKey,
-        });
+        const { signedTxXdr, error } = await withTimeout(
+          signTransaction(xdr, {
+            networkPassphrase: getNetworkPassphrase(),
+            address:           currentPublicKey,
+          }),
+          WALLET_CONNECT_TIMEOUT_MS,
+          'Freighter signing',
+        );
 
         if (combinedSignal.aborted) {
           throw new Error('Operation aborted');
