@@ -37,6 +37,7 @@ import { getNetworkPassphrase } from '@/lib/env';
 import { queryClient } from '@/lib/queryClient';
 import { useTransactionStore } from '@/lib/store';
 import { useRouter } from 'next/navigation';
+import toast from 'react-hot-toast';
 
 // ── Concurrency Primitives ───────────────────────────────────────────────────
 
@@ -412,6 +413,7 @@ export function WalletProvider({
         // Extension locked or app access revoked underneath us — the
         // session is no longer valid, so tear it down the same way an
         // explicit Disconnect click would.
+        toast.error('Wallet disconnected — Freighter is locked or access was revoked.');
         disconnect();
         return;
       }
@@ -421,6 +423,7 @@ export function WalletProvider({
       localStorage.setItem('conduit:wallet', JSON.stringify({ key: address, name: 'Freighter' }));
       queryClient.clear();
       clearTransactions();
+      toast(`Switched to ${address}`, { icon: '🔄' });
     });
 
     return () => watcher.stop();
