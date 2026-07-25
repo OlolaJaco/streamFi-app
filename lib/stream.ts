@@ -165,14 +165,9 @@ export async function withdraw(
   signal?:       AbortSignal,
 ): Promise<string> {
   if (isMock()) return 'mock_tx_hash_withdraw';
-  return invokeContract(
-    sender,
-    streamAddress,
-    'withdraw',
-    [nativeToScVal(amount, { type: 'i128' })],
-    signTx,
-    { signal },
-  );
+  return signal
+    ? invokeContract(sender, streamAddress, 'withdraw', [nativeToScVal(amount, { type: 'i128' })], signTx, { signal })
+    : invokeContract(sender, streamAddress, 'withdraw', [nativeToScVal(amount, { type: 'i128' })], signTx);
 }
 
 /**
@@ -185,7 +180,9 @@ export async function cancel(
   signal?:       AbortSignal,
 ): Promise<string> {
   if (isMock()) return 'mock_tx_hash_cancel';
-  return invokeContract(sender, streamAddress, 'cancel', [], signTx, { signal });
+  return signal
+    ? invokeContract(sender, streamAddress, 'cancel', [], signTx, { signal })
+    : invokeContract(sender, streamAddress, 'cancel', [], signTx);
 }
 
 /**
@@ -198,7 +195,9 @@ export async function pause(
   signal?:       AbortSignal,
 ): Promise<string> {
   if (isMock()) return 'mock_tx_hash_pause';
-  return invokeContract(sender, streamAddress, 'pause', [], signTx, { signal });
+  return signal
+    ? invokeContract(sender, streamAddress, 'pause', [], signTx, { signal })
+    : invokeContract(sender, streamAddress, 'pause', [], signTx);
 }
 
 /**
@@ -211,7 +210,9 @@ export async function resume(
   signal?:       AbortSignal,
 ): Promise<string> {
   if (isMock()) return 'mock_tx_hash_resume';
-  return invokeContract(sender, streamAddress, 'resume', [], signTx, { signal });
+  return signal
+    ? invokeContract(sender, streamAddress, 'resume', [], signTx, { signal })
+    : invokeContract(sender, streamAddress, 'resume', [], signTx);
 }
 
 /**
@@ -225,14 +226,9 @@ export async function topUp(
   signal?:       AbortSignal,
 ): Promise<string> {
   if (isMock()) return 'mock_tx_hash_topup';
-  return invokeContract(
-    sender,
-    streamAddress,
-    'top_up',
-    [nativeToScVal(amount, { type: 'i128' })],
-    signTx,
-    { signal },
-  );
+  return signal
+    ? invokeContract(sender, streamAddress, 'top_up', [nativeToScVal(amount, { type: 'i128' })], signTx, { signal })
+    : invokeContract(sender, streamAddress, 'top_up', [nativeToScVal(amount, { type: 'i128' })], signTx);
 }
 
 /**
@@ -245,5 +241,7 @@ export async function clawback(
   signal?:       AbortSignal,
 ): Promise<string> {
   if (isMock()) return 'mock_tx_hash_clawback';
-  return invokeContract(sender, streamAddress, 'clawback', [], signTx, { signal });
+  return signal
+    ? invokeContract(sender, streamAddress, 'clawback', [], signTx, { signal })
+    : invokeContract(sender, streamAddress, 'clawback', [], signTx);
 }

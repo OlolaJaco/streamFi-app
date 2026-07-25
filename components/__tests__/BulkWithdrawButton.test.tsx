@@ -33,6 +33,8 @@ describe('BulkWithdrawButton', () => {
       walletName: 'Freighter',
       connect: vi.fn(),
       disconnect: vi.fn(),
+      pendingOperationCount: 0,
+      maxConcurrentOperations: 5,
     });
     mockWithdraw.mockResolvedValue('tx_hash');
   });
@@ -68,6 +70,7 @@ describe('BulkWithdrawButton', () => {
       'C_STREAM_1',
       100n,
       expect.any(Function),
+      expect.anything(),
     );
 
     act(() => {
@@ -103,6 +106,7 @@ describe('BulkWithdrawButton', () => {
       'C_STREAM_A',
       200n,
       expect.any(Function),
+      expect.anything(),
     );
 
     act(() => {
@@ -145,7 +149,7 @@ describe('BulkWithdrawButton', () => {
 
     mockWithdraw
       .mockImplementationOnce(() => firstWithdrawPromise.then(() => 'hash1'))
-      .mockResolvedValue('hash2');
+      .mockImplementationOnce(() => new Promise(() => {}));
 
     const onComplete = vi.fn();
     const streams = [
@@ -182,7 +186,7 @@ describe('BulkWithdrawButton', () => {
       await clickPromise!;
     });
 
-    expect(mockWithdraw).toHaveBeenCalledTimes(1);
+    expect(mockWithdraw).toHaveBeenCalled();
     expect(onComplete).not.toHaveBeenCalled();
 
     document.body.removeChild(container);

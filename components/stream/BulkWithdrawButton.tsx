@@ -4,11 +4,9 @@ import { withdraw } from '@/lib/stream';
 import { Button } from '@/components/ui/Button';
 import { withBoundedParallel, normalizeError } from '@/lib/safe-operations';
 
-interface StreamEntry {
-  id: string;
-  info?: {
-    withdrawable: bigint;
-  };
+export interface StreamEntry {
+  id?: string;
+  info?: any;
 }
 
 interface BulkWithdrawResult {
@@ -48,7 +46,7 @@ export function BulkWithdrawButton({
 
     // Filter streams with withdrawable balance
     const withdrawableStreams = activeStreams.filter(
-      (s) => s.info?.withdrawable != null && s.info.withdrawable > 0n && s.id,
+      (s): s is StreamEntry & { id: string } => typeof s.id === 'string' && s.id.length > 0 && s.info?.withdrawable != null && s.info.withdrawable > 0n,
     );
 
     setProgress({ done: 0, total: withdrawableStreams.length });
@@ -76,7 +74,7 @@ export function BulkWithdrawButton({
           return { success: true, data: streamId };
         } catch (err) {
           const normalized = normalizeError(err, `Stream ${stream.id}`);
-          errors.push({ streamId: stream.id, error: normalized.message });
+          errors.push({ streamId: stream.id ?? 'unknown', error: normalized.message });
 
           if (mounted.current) {
             setProgress((p) => ({ ...p, done: p.done + 1 }));
@@ -95,21 +93,15 @@ export function BulkWithdrawButton({
       },
     );
 
-    // Check if we were aborted
-    if (signal.aborted && mounted.current) {
+    // Check if we were aborted or unmounted
+    if (signal.aborted || !mounted.current) {
       setIsProcessing(false);
-      onComplete?.({
-        successCount,
-        totalCount: withdrawableStreams.length,
-        errors: [...errors, { streamId: 'ABORT', error: 'Operation was cancelled' }],
-      });
       return;
     }
 
-    if (!mounted.current) return;
     setIsProcessing(false);
 
-    if (onComplete) {
+    if (onComplete && mounted.current) {
       onComplete({ successCount, totalCount: withdrawableStreams.length, errors });
     }
   }, [publicKey, activeStreams, signTx, maxConcurrency, onComplete]);
