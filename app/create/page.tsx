@@ -117,7 +117,7 @@ export default function CreatePage() {
       <div className="max-w-lg mx-auto px-4 py-10 text-center">
         <div className="card py-12">
           <p className="text-4xl mb-4">✓</p>
-          <h1 className="text-xl font-black mb-2">Stream created</h1>
+          <h1 className="text-xl font-black mb-2">Stream created successfully</h1>
           <p className="text-sm text-gray-500 mb-4">
             Transaction confirmed. Redirecting to your streams…
           </p>

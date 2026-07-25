@@ -29,8 +29,13 @@ export function BulkWithdrawButton({
   maxConcurrency?: number;
 }) {
   const { publicKey, signTx } = useWallet();
+
   const [isProcessing, setIsProcessing] = useState(false);
-  const [progress, setProgress] = useState<{ done: number; total: number }>({ done: 0, total: 0 });
+  const [progress, setProgress] = useState<{ done: number; total: number }>({
+    done: 0,
+    total: 0,
+  });
+
   const abortControllerRef = useRef<AbortController | null>(null);
   const mounted = useRef(true);
 
@@ -46,11 +51,10 @@ export function BulkWithdrawButton({
     if (!publicKey || isProcessing) return;
 
     abortControllerRef.current = new AbortController();
-    const signal = abortControllerRef.current.signal;
+    const { signal } = abortControllerRef.current;
 
     setIsProcessing(true);
 
-    // Filter streams with withdrawable balance
     const withdrawableStreams = activeStreams.filter(
       (s): s is StreamEntry & { id: string; info: { withdrawable: bigint } } =>
         Boolean(s.id) && s.info?.withdrawable != null && s.info.withdrawable > 0n,

@@ -173,16 +173,13 @@ describe('BulkWithdrawButton', () => {
       clickPromise = (async () => { button.click(); })();
     });
 
-    await act(async () => {
-      resolveFirstWithdraw();
-      await firstWithdrawPromise;
-    });
-
     act(() => {
       root.unmount();
     });
 
     await act(async () => {
+      resolveFirstWithdraw();
+      await firstWithdrawPromise;
       await clickPromise!;
     });
 
