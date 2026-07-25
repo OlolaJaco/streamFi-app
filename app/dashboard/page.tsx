@@ -18,6 +18,7 @@ type StreamStatus = "active" | "paused" | "ended" | "cancelled";
 
 interface StreamRow {
   id: string;
+  address: string;
   info: StreamInfo;
   withdrawable: bigint;
   status: StreamStatus;
@@ -67,6 +68,7 @@ async function loadRows(
       if (signal.aborted) return [];
       rows.push({
         id: rowId,
+        address: addr,
         info,
         withdrawable,
         status: deriveStatus(info, now),
@@ -245,6 +247,7 @@ export default function DashboardPage() {
                     .filter((s) => s.status === "active")
                     .map((s) => ({
                       id: s.id,
+                      address: s.address,
                       info: { withdrawable: s.withdrawable },
                     }))}
                   onComplete={async () => {

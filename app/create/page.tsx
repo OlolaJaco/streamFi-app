@@ -3,8 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter }        from 'next/navigation';
 import { useForm }          from 'react-hook-form';
-import { zodResolver }      from '@hookform/resolvers/zod';
-import { z }                from 'zod';
+import { z, ZodType } from 'zod';
 import { ArrowRight, Info } from 'lucide-react';
 import { useWallet }        from '@/contexts/WalletContext';
 import { createStream }     from '@/lib/factory';
@@ -13,6 +12,7 @@ import { TOKENS_TESTNET, tokenLogoUrl } from '@/lib/tokens';
 import { CopyHashButton }   from '@/components/ui/CopyHashButton';
 import { useDebounce }      from '@/hooks/useDebounce';
 import { refreshStreamData } from '@/lib/queryClient';
+import styles from './CreateStream.module.css';
 
 const schema = z.object({
   recipient:       z.string()
@@ -42,6 +42,23 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
       (err) => { clearTimeout(timer); reject(err); },
     );
   });
+}
+
+function zodResolver<T extends ZodType>(schema: T) {
+  return async (values: Record<string, unknown>) => {
+    const result = await schema.safeParseAsync(values);
+    if (result.success) {
+      return { values: result.data, errors: {} };
+    }
+    const errors: Record<string, { message?: string; type?: string }> = {};
+    for (const issue of result.error.issues) {
+      const path = issue.path.join('.');
+      if (!errors[path]) {
+        errors[path] = { message: issue.message, type: issue.code };
+      }
+    }
+    return { values: {}, errors };
+  };
 }
 
 type FormValues = z.infer<typeof schema>;
@@ -153,9 +170,9 @@ export default function CreatePage() {
           <p className="text-sm text-gray-500 mb-4">
             Transaction confirmed. Redirecting to your streams…
           </p>
-          <div className="inline-flex items-center gap-1.5 max-w-full">
+          <div className={`inline-flex items-center gap-1.5 max-w-full ${styles.inlineFlexRow}`}>
             <p className="font-mono text-xs text-gray-400 dark:text-gray-500 break-all">{txHash}</p>
-            <CopyHashButton hash={txHash} className="shrink-0" />
+            <CopyHashButton hash={txHash} className={`shrink-0 ${styles.shrink0}`} />
           </div>
         </div>
       </div>
@@ -198,16 +215,16 @@ export default function CreatePage() {
         {/* Token */}
         <div>
           <label className="block text-xs font-semibold mb-1 dark:text-white">Token</label>
-          <div className="relative flex items-center gap-2">
+          <div className={`relative flex items-center gap-2 ${styles.flexRow}`}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={tokenLogoUrl(token, 'testnet')}
               alt={`${token} logo`}
               width={20}
               height={20}
-              className="w-5 h-5 rounded-full shrink-0"
+              className={`w-5 h-5 rounded-full shrink-0 ${styles.shrink0}`}
             />
-            <select {...register('token')} className="input flex-1">
+            <select {...register('token')} className={`input flex-1 ${styles.flexGrow}`}>
               {TOKENS_TESTNET.map(t => (
                 <option key={t.symbol} value={t.symbol}>{t.symbol} — {t.name}</option>
               ))}
@@ -249,8 +266,8 @@ export default function CreatePage() {
 
         {/* Rate preview */}
         {deposit && duration && (
-          <div className="card bg-gray-50 dark:bg-gray-800 border-gray-100 dark:border-gray-700 flex items-start gap-2">
-            <Info className="w-4 h-4 text-gray-400 dark:text-gray-500 mt-0.5 shrink-0" />
+          <div className={`card bg-gray-50 dark:bg-gray-800 border-gray-100 dark:border-gray-700 flex items-start gap-2 ${styles.flexRowStart}`}>
+            <Info className={`w-4 h-4 text-gray-400 dark:text-gray-500 mt-0.5 shrink-0 ${styles.shrink0}`} />
             <div className="text-xs text-gray-600 dark:text-gray-400 space-y-0.5">
               <p>
                 Release rate:{' '}
@@ -266,7 +283,7 @@ export default function CreatePage() {
         )}
 
         {/* Clawback */}
-        <label className="flex items-start gap-3 cursor-pointer">
+        <label className={`flex items-start gap-3 cursor-pointer ${styles.flexRowStart}`}>
           <input
             {...register('clawback')}
             type="checkbox"

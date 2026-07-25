@@ -7,7 +7,7 @@ import { Modal }             from '@/components/ui/Modal';
 import { useWallet }         from '@/contexts/WalletContext';
 import { Input }             from '@/components/ui/Input';
 import * as streamLib        from '@/lib/stream';
-import { toStroops }         from '@/lib/format';
+import { safeToStroops }     from '@/lib/safe-operations';
 import { queryClient }       from '@/lib/queryClient';
 
 type StreamStatus = 'active' | 'paused' | 'ended' | 'cancelled';
@@ -71,13 +71,20 @@ export function StreamActions({
   }
 
   const submitTopUp = async () => {
-    const parsed = parseFloat(topUpAmt);
-    if (!topUpAmt || isNaN(parsed) || parsed <= 0) {
+    if (!topUpAmt || topUpAmt.trim() === '') {
       setTopUpErr('Enter a valid amount greater than 0.');
       return;
     }
+    const amount = safeToStroops(topUpAmt.trim());
+    if (amount === null || amount <= 0n) {
+      setTopUpErr('Enter a valid amount greater than 0.');
+      return;
+    }
+    if (amount > BigInt('170141183460469231731687303715884105727')) {
+      setTopUpErr('Amount exceeds maximum allowed.');
+      return;
+    }
     setTopUpErr('');
-    const amount = toStroops(parsed.toString());
     await run('topup', () => streamLib.topUp(publicKey, streamAddress, amount, signTx));
     if (!mounted.current) return;
     setTopUpOpen(false);
