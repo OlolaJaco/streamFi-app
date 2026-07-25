@@ -36,6 +36,7 @@ import {
 import { getNetworkPassphrase } from '@/lib/env';
 import { queryClient } from '@/lib/queryClient';
 import { useTransactionStore } from '@/lib/store';
+import { truncateAddress } from '@/lib/format';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 
@@ -423,7 +424,7 @@ export function WalletProvider({
       localStorage.setItem('conduit:wallet', JSON.stringify({ key: address, name: 'Freighter' }));
       queryClient.clear();
       clearTransactions();
-      toast(`Switched to ${address}`, { icon: '🔄' });
+      toast(`Switched to ${truncateAddress(address)}`, { icon: '🔄' });
     });
 
     return () => watcher.stop();
