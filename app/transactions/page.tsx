@@ -1,10 +1,12 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
 import { AlertCircle, RefreshCw } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 import { Card } from '@/components/ui/Card';
 import { formatTimestamp, truncateAddress } from '@/lib/format';
 import { fetchTransactionHistoryWithTimeout, type TransactionRow } from '@/lib/indexer';
+
+export const TRANSACTIONS_QUERY_KEY = ['transactions'] as const;
 
 const STATUS_CLASS: Record<string, string> = {
   Success: 'text-green-700 bg-green-50',
@@ -12,46 +14,26 @@ const STATUS_CLASS: Record<string, string> = {
   Failed:  'text-red-700 bg-red-50',
 };
 
-type LoadState = 'loading' | 'error' | 'ready';
-
 export default function TransactionsPage() {
-  const [txs, setTxs] = useState<TransactionRow[]>([]);
-  const [state, setState] = useState<LoadState>('loading');
-
-  const load = useCallback(() => {
-    let active = true;
-    setState('loading');
-
-    fetchTransactionHistoryWithTimeout()
-      .then((rows) => {
-        if (!active) return;
-        setTxs(rows);
-        setState('ready');
-      })
-      .catch((e) => {
-        if (!active) return;
-        // Subgraph down / timed out — show an error instead of spinning forever.
-        console.error('Failed to load transaction history:', e);
-        setState('error');
-      });
-
-    return () => { active = false; };
-  }, []);
-
-  useEffect(() => load(), [load]);
+  const { data: txs = [], status, refetch, isRefetching } = useQuery<TransactionRow[]>({
+    queryKey: TRANSACTIONS_QUERY_KEY,
+    queryFn: fetchTransactionHistoryWithTimeout,
+    staleTime: 1000 * 30,
+    retry: 1,
+  });
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-10">
       <h1 className="text-2xl font-black tracking-tight mb-8">Transaction History</h1>
 
-      {state === 'loading' ? (
+      {status === 'pending' ? (
         <Card>
           <div className="flex flex-col items-center justify-center gap-3 py-16 text-gray-400">
             <RefreshCw className="w-6 h-6 animate-spin" aria-hidden="true" />
             <span className="text-sm">Loading transactions…</span>
           </div>
         </Card>
-      ) : state === 'error' ? (
+      ) : status === 'error' ? (
         <Card>
           <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
             <AlertCircle className="w-8 h-8 text-red-500" aria-hidden="true" />
@@ -65,10 +47,11 @@ export default function TransactionsPage() {
             </div>
             <button
               type="button"
-              onClick={load}
+              onClick={() => refetch()}
+              disabled={isRefetching}
               className="inline-flex items-center gap-1.5 text-sm font-semibold px-3 py-1.5 rounded border border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
             >
-              <RefreshCw className="w-3.5 h-3.5" aria-hidden="true" /> Retry
+              <RefreshCw className={`w-3.5 h-3.5 ${isRefetching ? 'animate-spin' : ''}`} aria-hidden="true" /> Retry
             </button>
           </div>
         </Card>
