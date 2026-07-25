@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mockInvalidateQueries = vi.fn();
-const mockRefetchQueries = vi.fn();
+const { mockInvalidateQueries, mockRefetchQueries } = vi.hoisted(() => ({
+  mockInvalidateQueries: vi.fn(),
+  mockRefetchQueries: vi.fn(),
+}));
 
 vi.mock('@tanstack/react-query', () => ({
   QueryClient: class {
