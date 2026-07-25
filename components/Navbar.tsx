@@ -6,6 +6,7 @@ import { usePathname }      from 'next/navigation';
 import { Menu, X }          from 'lucide-react';
 import { ConnectButton }    from '@/components/ConnectButton';
 import { ThemeToggle }      from '@/components/ThemeToggle';
+import { ErrorBoundary }    from '@/components/ErrorBoundary';
 
 const NAV = [
   { href: '/streams',      label: 'Streams'    },
@@ -61,8 +62,23 @@ export function Navbar() {
 
         {/* Right side */}
         <div className="ml-auto flex items-center gap-2">
-          <ThemeToggle />
-          <ConnectButton />
+          {/* Isolate wallet/network-adjacent widgets: a crash here (e.g. an
+              undefined value in a widget's state hook) shouldn't blank the
+              whole header, just fall back to a compact retry (fixes #191). */}
+          <ErrorBoundary
+            fallback={(_error, reset) => (
+              <button
+                type="button"
+                onClick={reset}
+                className="text-xs text-gray-400 hover:text-black dark:hover:text-white underline"
+              >
+                Reload wallet controls
+              </button>
+            )}
+          >
+            <ThemeToggle />
+            <ConnectButton />
+          </ErrorBoundary>
 
           {/* Mobile hamburger */}
           <button

@@ -7,6 +7,7 @@ import { fromStroops }          from '@/lib/format';
 import { useWallet }            from '@/contexts/WalletContext';
 import { withdraw }             from '@/lib/stream';
 import { CopyHashButton }       from '@/components/ui/CopyHashButton';
+import { queryClient }          from '@/lib/queryClient';
 
 type Step = 'idle' | 'signing' | 'submitting' | 'done' | 'error';
 
@@ -49,6 +50,9 @@ export function WithdrawButton({ streamAddress, withdrawable, token, onSuccess }
       if (!mounted.current) return;
       setTxHash(hash);
       setStep('done');
+      // Withdrawn balance just changed on-chain — invalidate cached reads
+      // (e.g. a Profile Page's balance query) so they refetch (fixes #193).
+      await queryClient.invalidateQueries();
       onSuccess?.();
     } catch (e) {
       if (!mounted.current) return;

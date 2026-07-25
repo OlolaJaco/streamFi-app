@@ -13,6 +13,13 @@ vi.mock('@stellar/freighter-api', () => ({
   signTransaction: vi.fn(),
 }));
 
+// WalletContext calls useRouter() (disconnect() navigates home) — outside of
+// a real Next.js app router tree that throws "invariant expected app router
+// to be mounted", so every test in this file needs it mocked.
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
+}));
+
 const mockedFreighter = vi.mocked(freighter, true);
 
 function mountWallet() {
@@ -119,6 +126,33 @@ describe('WalletContext', () => {
     // was aborted while queued and never called it.
     expect(mockedFreighter.isConnected).toHaveBeenCalledTimes(2);
 
+    document.body.removeChild(container);
+  });
+
+  it('clears the connecting state instead of spinning forever when the RPC/extension check times out (fixes #190)', async () => {
+    vi.useFakeTimers();
+
+    // Freighter's isConnected() never settles — simulates an unresponsive
+    // extension/RPC provider.
+    mockedFreighter.isConnected.mockImplementationOnce(() => new Promise(() => {}));
+
+    const { stateRef, container } = mountWallet();
+    const wallet = stateRef.current;
+
+    let caught: unknown;
+    await act(async () => {
+      const pending = wallet.connect().catch((e: unknown) => { caught = e; });
+      // WALLET_CONNECT_TIMEOUT_MS is 15s — advance past it.
+      await vi.advanceTimersByTimeAsync(15_001);
+      await pending;
+    });
+
+    expect(caught).toBeInstanceOf(Error);
+    expect((caught as Error).message).toMatch(/timed out/i);
+    // The spinner-driving flag must be cleared, not stuck `true` forever.
+    expect(stateRef.current?.connecting).toBe(false);
+
+    vi.useRealTimers();
     document.body.removeChild(container);
   });
 });
