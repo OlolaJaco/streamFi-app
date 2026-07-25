@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { Plus, AlertCircle, RefreshCw } from "lucide-react";
 import { useWallet } from "@/contexts/WalletContext";
 import { StreamCard } from "@/components/stream/StreamCard";
 import { StreamCardSkeleton } from "@/components/stream/StreamCardSkeleton";
@@ -159,16 +159,16 @@ export default function DashboardPage() {
   const displayed = tab === "receiving" ? receiving : sending;
 
   const STATS = [
-    { label: "Active streams", value: loading ? "…" : String(activeCount) },
+    { label: "Active streams", value: loading ? "…" : error ? "—" : String(activeCount) },
     {
       label: "Receiving /s",
-      value: loading ? "…" : fromStroops(receivingRate),
+      value: loading ? "…" : error ? "—" : fromStroops(receivingRate),
     },
     {
       label: "Total received",
-      value: loading ? "…" : fromStroops(totalWithdrawn),
+      value: loading ? "…" : error ? "—" : fromStroops(totalWithdrawn),
     },
-    { label: "Senders", value: loading ? "…" : String(senderCount) },
+    { label: "Senders", value: loading ? "…" : error ? "—" : String(senderCount) },
   ];
 
   return (
@@ -265,6 +265,41 @@ export default function DashboardPage() {
               {Array.from({ length: 3 }).map((_, i) => (
                 <StreamCardSkeleton key={i} />
               ))}
+            </div>
+          ) : error ? (
+            <div className="card py-8 px-6 flex flex-col items-center gap-4 text-center">
+              <AlertCircle className="w-8 h-8 text-gray-400 dark:text-gray-500" aria-hidden="true" />
+              <p className="text-sm text-gray-600 dark:text-gray-400">{error}</p>
+              <button
+                onClick={() => {
+                  if (publicKey) {
+                    setError(null);
+                    setLoading(true);
+                    const now = Math.floor(Date.now() / 1000);
+                    Promise.all([
+                      loadRows(publicKey, "recipient", now),
+                      loadRows(publicKey, "sender", now),
+                    ])
+                      .then(([recv, sent]) => {
+                        setReceiving(recv);
+                        setSending(sent);
+                      })
+                      .catch((e) => {
+                        console.error(e);
+                        const message =
+                          e instanceof RpcTimeoutError
+                            ? "The RPC provider didn't respond in time. Check your connection and try again."
+                            : "Failed to load streams. Please try again.";
+                        setError(message);
+                      })
+                      .finally(() => setLoading(false));
+                  }
+                }}
+                className="flex items-center gap-2 text-sm font-semibold underline hover:text-black dark:hover:text-white text-gray-500 dark:text-gray-400"
+              >
+                <RefreshCw className="w-4 h-4" aria-hidden="true" />
+                Retry
+              </button>
             </div>
           ) : displayed.length === 0 ? (
             <div className="card text-center py-12 text-sm text-gray-400 dark:text-gray-500">
