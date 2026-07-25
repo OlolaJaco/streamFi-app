@@ -9,6 +9,7 @@ import { Badge }           from '@/components/ui/Badge';
 import { Card }            from '@/components/ui/Card';
 import { RateTicker }      from '@/components/stream/RateTicker';
 import { StreamTimeline }  from '@/components/stream/StreamTimeline';
+import { StreamFlowChart } from '@/components/stream/StreamFlowChart';
 import { StreamActions }   from '@/components/stream/StreamActions';
 import { useWallet }       from '@/contexts/WalletContext';
 import { getStreamAddress, getStreamInfo, getWithdrawable } from '@/lib/stream';
@@ -156,6 +157,21 @@ export default function StreamPage() {
           />
         </div>
       )}
+
+      {/* Stream Flow Chart Visualization */}
+      <div className="mb-6">
+        <StreamFlowChart
+          startTime={info.startTime}
+          endTime={info.endTime}
+          ratePerSecond={info.ratePerSecond}
+          withdrawn={info.withdrawn}
+          withdrawable={withdrawable}
+          paused={info.paused}
+          pausedAt={info.pausedAt}
+          cancelled={info.cancelled}
+          tokenSymbol={truncateAddress(info.token)}
+        />
+      </div>
 
       {/* Details table */}
       <Card className="mb-6">

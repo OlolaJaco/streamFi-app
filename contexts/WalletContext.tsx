@@ -48,9 +48,10 @@ class Mutex {
 
   async acquire(abortSignal?: AbortSignal): Promise<() => void> {
     return new Promise<() => void>((resolve, reject) => {
+      let entry: ((release: () => void) => void) | undefined;
       // If already locked, queue the request
       if (this._locked) {
-        const entry = (release: () => void) => {
+        entry = (release: () => void) => {
           if (abortSignal?.aborted) {
             reject(new Error('Operation aborted'));
             return;
@@ -65,10 +66,11 @@ class Mutex {
 
       if (abortSignal?.aborted) {
         reject(new Error('Operation aborted'));
-      } else if (abortSignal) {
+      } else if (abortSignal && entry) {
+        const queuedEntry = entry;
         abortSignal.addEventListener('abort', () => {
           // Remove this entry from queue if it hasn't been resolved yet
-          const idx = this._queue.indexOf(entry!);
+          const idx = this._queue.indexOf(queuedEntry);
           if (idx !== -1) this._queue.splice(idx, 1);
           reject(new Error('Operation aborted'));
         }, { once: true });
