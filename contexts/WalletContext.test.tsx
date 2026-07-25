@@ -6,11 +6,44 @@ import { createRoot } from 'react-dom/client';
 import { act } from 'react';
 import { WalletProvider, useWallet, Mutex } from './WalletContext';
 import * as freighter from '@stellar/freighter-api';
+import { queryClient } from '@/lib/queryClient';
+import { useTransactionStore } from '@/lib/store';
+
+interface MockWatcherCallbackParams {
+  address: string;
+  network: string;
+  networkPassphrase: string;
+  error?: unknown;
+}
+
+// Tracks every MockWatchWalletChanges instance so tests can grab the one
+// created for their own mountWallet() call and manually fire its callback —
+// standing in for a Freighter extension poll tick.
+const { watchInstances } = vi.hoisted(() => ({
+  watchInstances: [] as Array<{
+    cb: ((params: MockWatcherCallbackParams) => void) | null;
+    stopped: boolean;
+  }>,
+}));
 
 vi.mock('@stellar/freighter-api', () => ({
   isConnected: vi.fn(),
   requestAccess: vi.fn(),
   signTransaction: vi.fn(),
+  WatchWalletChanges: class MockWatchWalletChanges {
+    cb: ((params: MockWatcherCallbackParams) => void) | null = null;
+    stopped = false;
+    constructor() {
+      watchInstances.push(this);
+    }
+    watch(cb: (params: MockWatcherCallbackParams) => void) {
+      this.cb = cb;
+      return {};
+    }
+    stop() {
+      this.stopped = true;
+    }
+  },
 }));
 
 // WalletContext calls useRouter() (disconnect() navigates home) — outside of
@@ -50,6 +83,8 @@ describe('WalletContext', () => {
   beforeEach(() => {
     localStorage.clear();
     vi.clearAllMocks();
+    watchInstances.length = 0;
+    useTransactionStore.setState({ transactions: {}, order: [] });
   });
 
   it('prevents stale async connection state from applying after disconnect', async () => {
@@ -153,6 +188,77 @@ describe('WalletContext', () => {
     expect(stateRef.current?.connecting).toBe(false);
 
     vi.useRealTimers();
+    document.body.removeChild(container);
+  });
+
+  it('purges cached wallet data when the connected account changes underneath the app (fixes #88)', async () => {
+    mockedFreighter.isConnected.mockResolvedValue({ isConnected: true });
+    mockedFreighter.requestAccess.mockResolvedValue({ address: 'GAFIRSTACCOUNT', error: null } as any);
+
+    const { stateRef, container } = mountWallet();
+    const wallet = stateRef.current;
+
+    await act(async () => {
+      await wallet.connect();
+    });
+
+    expect(stateRef.current?.publicKey).toBe('GAFIRSTACCOUNT');
+
+    useTransactionStore.getState().addTransaction('tx1', 'Test transfer');
+    expect(useTransactionStore.getState().transactions['tx1']).toBeDefined();
+    const clearSpy = vi.spyOn(queryClient, 'clear');
+
+    // Simulate the extension reporting a different account on its next poll
+    // tick — e.g. the user switched accounts directly in Freighter without
+    // ever clicking "Disconnect" in the app.
+    const watcher = watchInstances[watchInstances.length - 1];
+    await act(async () => {
+      watcher?.cb?.({ address: 'GASECONDACCOUNT', network: 'TESTNET', networkPassphrase: 'Test SDF Network ; September 2015' });
+    });
+
+    expect(stateRef.current?.publicKey).toBe('GASECONDACCOUNT');
+    expect(clearSpy).toHaveBeenCalled();
+    expect(useTransactionStore.getState().transactions).toEqual({});
+    expect(JSON.parse(localStorage.getItem('conduit:wallet')!).key).toBe('GASECONDACCOUNT');
+
+    document.body.removeChild(container);
+  });
+
+  it('disconnects when the extension reports no address — locked or access revoked (fixes #88)', async () => {
+    mockedFreighter.isConnected.mockResolvedValue({ isConnected: true });
+    mockedFreighter.requestAccess.mockResolvedValue({ address: 'GAFIRSTACCOUNT', error: null } as any);
+
+    const { stateRef, container } = mountWallet();
+    const wallet = stateRef.current;
+
+    await act(async () => {
+      await wallet.connect();
+    });
+    expect(stateRef.current?.connected).toBe(true);
+
+    const watcher = watchInstances[watchInstances.length - 1];
+    await act(async () => {
+      watcher?.cb?.({ address: '', network: '', networkPassphrase: '' });
+    });
+
+    expect(stateRef.current?.connected).toBe(false);
+    expect(stateRef.current?.publicKey).toBe(null);
+    expect(localStorage.getItem('conduit:wallet')).toBeNull();
+
+    document.body.removeChild(container);
+  });
+
+  it('ignores watcher polls while no wallet session is active in the app', async () => {
+    const { stateRef, container } = mountWallet();
+
+    const watcher = watchInstances[watchInstances.length - 1];
+    await act(async () => {
+      watcher?.cb?.({ address: 'GASOMEACCOUNT', network: 'TESTNET', networkPassphrase: 'Test SDF Network ; September 2015' });
+    });
+
+    expect(stateRef.current?.publicKey).toBe(null);
+    expect(stateRef.current?.connected).toBe(false);
+
     document.body.removeChild(container);
   });
 });

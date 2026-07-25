@@ -31,11 +31,14 @@ import {
   isConnected as freighterIsConnected,
   requestAccess,
   signTransaction,
+  WatchWalletChanges,
 } from '@stellar/freighter-api';
 import { getNetworkPassphrase } from '@/lib/env';
 import { queryClient } from '@/lib/queryClient';
 import { useTransactionStore } from '@/lib/store';
+import { truncateAddress } from '@/lib/format';
 import { useRouter } from 'next/navigation';
+import toast from 'react-hot-toast';
 
 // ── Concurrency Primitives ───────────────────────────────────────────────────
 
@@ -256,6 +259,13 @@ export function WalletProvider({
   const pendingConnectAbortRef = useRef<AbortController | null>(null); // 👈 ADD THIS LINE
   const router = useRouter();
 
+  // Mirrors `publicKey` for use inside the WatchWalletChanges callback below,
+  // which is registered once and would otherwise close over a stale value.
+  const publicKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    publicKeyRef.current = publicKey;
+  }, [publicKey]);
+
   // Access the Zustand store's reset action outside of a component render
   const clearTransactions = useTransactionStore((s) => s.clearTransactions);
 
@@ -386,6 +396,39 @@ export function WalletProvider({
     clearTransactions();
     router.push('/');
   }, [clearTransactions, router]);
+
+  // ── external wallet-change watcher ─────────────────────────────────────────
+
+  // Freighter reports address/network changes only through this poll-based
+  // watcher — there is no push event. Without it, switching accounts directly
+  // in the extension (rather than via this app's Disconnect button) leaves
+  // `publicKey` and every cached on-chain query pointed at the old account,
+  // silently showing stale data (fixes #88).
+  useEffect(() => {
+    const watcher = new WatchWalletChanges();
+    watcher.watch(({ address }) => {
+      if (!isMountedRef.current) return;
+      if (!publicKeyRef.current) return; // no active session to keep in sync
+
+      if (!address) {
+        // Extension locked or app access revoked underneath us — the
+        // session is no longer valid, so tear it down the same way an
+        // explicit Disconnect click would.
+        toast.error('Wallet disconnected — Freighter is locked or access was revoked.');
+        disconnect();
+        return;
+      }
+      if (address === publicKeyRef.current) return; // nothing actually changed
+
+      setPublicKey(address);
+      localStorage.setItem('conduit:wallet', JSON.stringify({ key: address, name: 'Freighter' }));
+      queryClient.clear();
+      clearTransactions();
+      toast(`Switched to ${truncateAddress(address)}`, { icon: '🔄' });
+    });
+
+    return () => watcher.stop();
+  }, [clearTransactions, disconnect]);
 
   // ── signTx ─────────────────────────────────────────────────────────────────
 
