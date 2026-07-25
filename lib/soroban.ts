@@ -436,6 +436,9 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
 
 /** Convert an i128 ScVal to bigint */
 export function scValToI128(val: xdr.ScVal): bigint {
+  if (val.switch().name !== 'scvI128') {
+    throw new Error(`Malformed RPC payload: expected i128, got ${val.switch().name}`);
+  }
   const i128 = val.i128();
   const hi   = BigInt(i128.hi().toString());
   const lo   = BigInt(i128.lo().toString());
@@ -444,5 +447,8 @@ export function scValToI128(val: xdr.ScVal): bigint {
 
 /** Convert a u64 ScVal to bigint */
 export function scValToU64(val: xdr.ScVal): bigint {
+  if (val.switch().name !== 'scvU64') {
+    throw new Error(`Malformed RPC payload: expected u64, got ${val.switch().name}`);
+  }
   return BigInt(val.u64().toString());
 }

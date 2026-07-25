@@ -20,7 +20,7 @@ export function ConnectButton() {
 
   if (connecting) {
     return (
-      <button disabled className="btn-secondary text-xs opacity-60">
+      <button disabled aria-busy="true" className="btn-secondary text-xs opacity-60">
         Connecting…
       </button>
     );
@@ -50,7 +50,9 @@ export function ConnectButton() {
         Connect wallet
       </button>
       {error && (
-        <p className="text-xs text-red-600 max-w-[16rem] text-right">{error}</p>
+        <p role="alert" aria-live="polite" className="text-xs text-red-600 max-w-[16rem] text-right">
+          {error}
+        </p>
       )}
     </div>
   );

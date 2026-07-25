@@ -85,6 +85,16 @@ describe('streamsBySender / streamsByRecipient', () => {
       expect.arrayContaining([expect.anything(), expect.anything(), expect.anything()]),
     );
   });
+
+  // A malformed RPC response (e.g. a simulation error page or a stale node
+  // returning the wrong shape) can hand back a non-vec ScVal. This used to
+  // crash with a raw TypeError from the `.vec()!` non-null assertion instead
+  // of a boundary-checked, catchable error.
+  it('rejects a non-vec result instead of crashing on the vec() assertion', async () => {
+    mockSimulateReadOnly.mockResolvedValue(xdr.ScVal.scvVoid());
+    const { streamsBySender } = await import('./factory.js');
+    await expect(streamsBySender(SENDER, SENDER, 0, 20)).rejects.toThrow(/expected a vec/i);
+  });
 });
 
 describe('createStream', () => {

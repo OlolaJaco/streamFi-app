@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Badge } from '@/components/ui/Badge';
 import { ProgressBar } from '@/components/ui/ProgressBar';
 import { truncateAddress } from '@/lib/format';
@@ -16,8 +16,24 @@ export function BatchStreamCreator() {
   const [rateInput, setRateInput] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const isSubmittingRef = useRef(false);
+  const isMountedRef = useRef(true);
+  const pendingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+      // Under poor network conditions the simulated submission can still
+      // be pending when the user navigates away — cancel it rather than
+      // leaving it running against a detached component.
+      if (pendingTimerRef.current) {
+        clearTimeout(pendingTimerRef.current);
+        pendingTimerRef.current = null;
+      }
+    };
+  }, []);
 
   const addRecipient = () => {
     if (!addressInput || !rateInput) return;
@@ -29,7 +45,7 @@ export function BatchStreamCreator() {
     }
 
     if (!/^\d+$/.test(rateInput)) {
-      alert("Invalid rate input. Must be a positive integer.");
+      setError("Invalid rate input. Must be a positive integer.");
       return;
     }
     try {
@@ -41,8 +57,9 @@ export function BatchStreamCreator() {
       setRecipients([...recipients, { address: addressInput.trim(), ratePerSecond: rate }]);
       setAddressInput('');
       setRateInput('');
+      setError(null);
     } catch (e) {
-      alert("Invalid rate input. Must be an integer.");
+      setError("Invalid rate input. Must be an integer.");
     }
   };
 
@@ -54,17 +71,27 @@ export function BatchStreamCreator() {
     if (recipients.length === 0 || isSubmittingRef.current) return;
     isSubmittingRef.current = true;
     setIsSubmitting(true);
+    setError(null);
     try {
       // Simulate interaction with SDK ConduitBatcher
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await new Promise<void>((resolve) => {
+        pendingTimerRef.current = setTimeout(() => {
+          pendingTimerRef.current = null;
+          resolve();
+        }, 2000);
+      });
+      if (!isMountedRef.current) return;
       setSuccess(true);
       setRecipients([]);
-    } catch (error) {
-      console.error("Batch creation failed", error);
-      alert("Failed to submit batch transaction.");
+    } catch (submitError) {
+      if (!isMountedRef.current) return;
+      console.error("Batch creation failed", submitError);
+      setError("Failed to submit batch transaction. Please try again.");
     } finally {
       isSubmittingRef.current = false;
-      setIsSubmitting(false);
+      if (isMountedRef.current) {
+        setIsSubmitting(false);
+      }
     }
   };
 
@@ -83,7 +110,17 @@ export function BatchStreamCreator() {
   return (
     <div className="card max-w-2xl mx-auto p-6">
       <h2 className="text-2xl font-bold mb-4">Batch Stream Creation</h2>
-      
+
+      {error && (
+        <div
+          role="alert"
+          aria-live="polite"
+          className="border border-gray-200 dark:border-gray-800 rounded p-4 text-sm text-gray-500 dark:text-gray-400 mb-4"
+        >
+          {error}
+        </div>
+      )}
+
       <div className="flex gap-2 mb-4">
         <input 
           className="input flex-1" 

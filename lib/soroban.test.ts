@@ -48,3 +48,32 @@ describe('scValToU64', () => {
     expect(scValToU64(xdr.ScVal.scvU64(xdr.Uint64.fromString(max.toString())))).toBe(max);
   });
 });
+
+// A malformed RPC response (contract upgrade mismatch, proxy error page, or a
+// transient node returning the wrong simulation shape) hands back an ScVal of
+// an unexpected type. Both decoders previously trusted the union tag blindly
+// (`val.u64()` / `val.i128()`), which throws an opaque "Bad union switch"
+// error from the XDR layer instead of a message a caller can act on.
+describe('scValToU64 — malformed payload boundary', () => {
+  it('rejects a void result instead of throwing an opaque XDR union error', () => {
+    expect(() => scValToU64(xdr.ScVal.scvVoid())).toThrow(/expected u64/i);
+  });
+
+  it('rejects a string masquerading as a u64', () => {
+    expect(() => scValToU64(xdr.ScVal.scvString('not-a-number'))).toThrow(/expected u64/i);
+  });
+
+  it('rejects an i128 payload passed to the u64 decoder', () => {
+    expect(() => scValToU64(i128(42n))).toThrow(/expected u64/i);
+  });
+});
+
+describe('scValToI128 — malformed payload boundary', () => {
+  it('rejects a void result instead of throwing an opaque XDR union error', () => {
+    expect(() => scValToI128(xdr.ScVal.scvVoid())).toThrow(/expected i128/i);
+  });
+
+  it('rejects a u64 payload passed to the i128 decoder', () => {
+    expect(() => scValToI128(xdr.ScVal.scvU64(xdr.Uint64.fromString('1')))).toThrow(/expected i128/i);
+  });
+});
