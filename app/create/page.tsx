@@ -12,7 +12,7 @@ import { toStroops }        from '@/lib/format';
 import { TOKENS_TESTNET, tokenLogoUrl } from '@/lib/tokens';
 import { CopyHashButton }   from '@/components/ui/CopyHashButton';
 import { useDebounce }      from '@/hooks/useDebounce';
-import { queryClient }      from '@/lib/queryClient';
+import { refreshStreamData } from '@/lib/queryClient';
 
 const schema = z.object({
   recipient:       z.string()
@@ -131,9 +131,9 @@ export default function CreatePage() {
         'Stream creation',
       );
 
-      // Invalidate all cached queries so the streams/dashboard pages
-      // reflect the newly created stream immediately (fixes #162).
-      await queryClient.invalidateQueries();
+      // Invalidate and refetch active stream data so the streams/dashboard
+      // pages reflect the newly created stream immediately (fixes #162).
+      await refreshStreamData();
 
       setTxHash(hash);
       setTimeout(() => router.push('/streams'), 3000);

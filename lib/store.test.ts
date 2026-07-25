@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 vi.mock('./queryClient', () => ({
   queryClient: { invalidateQueries: vi.fn() },
+  refreshStreamData: vi.fn(() => Promise.resolve()),
 }));
 
 vi.mock('react-hot-toast', () => ({

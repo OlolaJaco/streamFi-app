@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { queryClient } from './queryClient';
+import { refreshStreamData } from './queryClient';
 import toast from 'react-hot-toast';
 
 export type TransactionStatus = 'signing' | 'broadcasting' | 'confirming' | 'success' | 'failed';
@@ -81,8 +81,8 @@ export const useTransactionStore = create<TransactionStore>((set) => ({
 
       if (status === 'success') {
         toast.success(`${tx.description} successful!`, { id });
-        // Automatically invalidate related queries to refresh the UI
-        queryClient.invalidateQueries();
+        // Automatically invalidate and refetch stream-related queries to refresh the UI
+        void refreshStreamData();
       } else if (status === 'failed') {
         toast.error(`Failed: ${error || 'Unknown error'}`, { id });
       } else if (status === 'broadcasting') {
