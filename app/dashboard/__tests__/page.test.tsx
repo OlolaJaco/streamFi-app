@@ -33,10 +33,12 @@ vi.mock("@/lib/factory", () => ({
 
 const mockGetStreamAddress = vi.fn();
 const mockGetStreamInfo = vi.fn();
+const mockGetWithdrawable = vi.fn();
 
 vi.mock("@/lib/stream", () => ({
   getStreamAddress: (...args: unknown[]) => mockGetStreamAddress(...args),
   getStreamInfo: (...args: unknown[]) => mockGetStreamInfo(...args),
+  getWithdrawable: (...args: unknown[]) => mockGetWithdrawable(...args),
 }));
 
 vi.mock("@/lib/format", () => ({
@@ -122,6 +124,7 @@ describe("DashboardPage — heavy load initialization", () => {
     mockStreamsByRecipient.mockResolvedValue([]);
     mockGetStreamAddress.mockResolvedValue(null);
     mockGetStreamInfo.mockResolvedValue(null);
+    mockGetWithdrawable.mockResolvedValue(0n);
   });
 
   afterEach(() => {
