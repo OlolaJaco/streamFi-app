@@ -2,10 +2,19 @@
  * DripFactory contract call wrappers for conduit-app.
  */
 
-import { Address, nativeToScVal } from '@stellar/stellar-sdk';
+import { Address, nativeToScVal, xdr } from '@stellar/stellar-sdk';
 import { invokeContract, simulateReadOnly, scValToU64 } from './soroban';
 import { tryGetFactoryContractId } from './env';
 import { SENDER_STREAM_IDS, RECIPIENT_STREAM_IDS, MOCK_STREAM_IDS } from './mock-data';
+
+/** Decode a vec-of-u64 RPC result, rejecting any other shape with a clear error. */
+function decodeU64Vec(result: xdr.ScVal): bigint[] {
+  const vec = result.vec();
+  if (!vec) {
+    throw new Error(`Malformed RPC payload: expected a vec, got ${result.switch().name}`);
+  }
+  return vec.map(v => scValToU64(v));
+}
 
 let _factory: string | undefined;
 function FACTORY(): string | undefined {
@@ -14,6 +23,21 @@ function FACTORY(): string | undefined {
 
 function isMock(): boolean {
   return !FACTORY();
+}
+
+const MAX_U32 = 0xffff_ffff;
+
+function validatePage(offset: number, limit: number): void {
+  if (
+    !Number.isSafeInteger(offset) ||
+    !Number.isSafeInteger(limit) ||
+    offset < 0 ||
+    limit < 0 ||
+    offset > MAX_U32 ||
+    limit > MAX_U32
+  ) {
+    throw new RangeError('Stream pagination values must be unsigned 32-bit integers');
+  }
 }
 
 // ── Read-only ─────────────────────────────────────────────────────────────────
@@ -31,14 +55,17 @@ export async function streamsBySender(
   sender:  string,
   offset:  number,
   limit:   number,
+  options?: { signal?: AbortSignal },
 ): Promise<bigint[]> {
+  validatePage(offset, limit);
   if (isMock()) return SENDER_STREAM_IDS;
-  const result = await simulateReadOnly(source, FACTORY()!, 'streams_by_sender', [
+  const scVals = [
     new Address(sender).toScVal(),
     nativeToScVal(offset, { type: 'u32' }),
     nativeToScVal(limit,  { type: 'u32' }),
-  ]);
-  return result.vec()!.map(v => scValToU64(v));
+  ];
+  const result = await simulateReadOnly(source, FACTORY()!, 'streams_by_sender', scVals);
+  return decodeU64Vec(result);
 }
 
 /** Stream IDs received by a recipient address (paginated) */
@@ -47,14 +74,17 @@ export async function streamsByRecipient(
   recipient: string,
   offset:    number,
   limit:     number,
+  options?:  { signal?: AbortSignal },
 ): Promise<bigint[]> {
+  validatePage(offset, limit);
   if (isMock()) return RECIPIENT_STREAM_IDS;
-  const result = await simulateReadOnly(source, FACTORY()!, 'streams_by_recipient', [
+  const scVals = [
     new Address(recipient).toScVal(),
     nativeToScVal(offset, { type: 'u32' }),
     nativeToScVal(limit,  { type: 'u32' }),
-  ]);
-  return result.vec()!.map(v => scValToU64(v));
+  ];
+  const result = await simulateReadOnly(source, FACTORY()!, 'streams_by_recipient', scVals);
+  return decodeU64Vec(result);
 }
 
 // ── Mutating ──────────────────────────────────────────────────────────────────

@@ -1,15 +1,16 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Plus, AlertCircle, RefreshCw } from "lucide-react";
 import { useWallet } from "@/contexts/WalletContext";
 import { StreamCard } from "@/components/stream/StreamCard";
+import { StreamCardSkeleton } from "@/components/stream/StreamCardSkeleton";
 import { BulkWithdrawButton } from "@/components/stream/BulkWithdrawButton";
 import { streamsBySender, streamsByRecipient } from "@/lib/factory";
-import { getStreamAddress, getStreamInfo } from "@/lib/stream";
+import { getStreamAddress, getStreamInfo, getWithdrawable } from "@/lib/stream";
 import { fromStroops } from "@/lib/format";
-import { RpcTimeoutError } from "@/lib/soroban";
+import { refreshStreamData } from "@/lib/queryClient";
 import type { StreamInfo } from "@/lib/stream";
 
 type Tab = "receiving" | "sending";
@@ -17,7 +18,9 @@ type StreamStatus = "active" | "paused" | "ended" | "cancelled";
 
 interface StreamRow {
   id: string;
+  address: string;
   info: StreamInfo;
+  withdrawable: bigint;
   status: StreamStatus;
 }
 
@@ -32,23 +35,45 @@ async function loadRows(
   publicKey: string,
   role: "sender" | "recipient",
   now: number,
+  signal: AbortSignal,
 ): Promise<StreamRow[]> {
-  const ids =
-    role === "sender"
-      ? await streamsBySender(publicKey, publicKey, 0, 50)
-      : await streamsByRecipient(publicKey, publicKey, 0, 50);
+  let ids: bigint[];
+  try {
+    ids =
+      role === "sender"
+        ? await streamsBySender(publicKey, publicKey, 0, 50, { signal })
+        : await streamsByRecipient(publicKey, publicKey, 0, 50, { signal });
+  } catch {
+    return [];
+  }
+
+  if (!ids || !Array.isArray(ids)) return [];
 
   const rows: StreamRow[] = [];
+  const seen = new Set<string>();
   for (const id of ids) {
+    if (signal.aborted) return [];
+    if (typeof id !== "bigint") continue;
+    const rowId = id.toString();
+    if (seen.has(rowId)) continue;
     try {
-      const addr = await getStreamAddress(publicKey, id);
-      if (!addr) continue;
-      const info = await getStreamInfo(publicKey, addr);
+      const addr = await getStreamAddress(publicKey, id, { signal });
+      if (!addr || typeof addr !== "string") continue;
+      const [info, withdrawable] = await Promise.all([
+        getStreamInfo(publicKey, addr, { signal }),
+        getWithdrawable(publicKey, addr),
+      ]);
+      if (!info || typeof info !== "object") continue;
+      if (typeof info.ratePerSecond !== "bigint") continue;
+      if (signal.aborted) return [];
       rows.push({
-        id: id.toString(),
+        id: rowId,
+        address: addr,
         info,
+        withdrawable,
         status: deriveStatus(info, now),
       });
+      seen.add(rowId);
     } catch {
       /* skip invalid streams */
     }
@@ -66,36 +91,43 @@ export default function DashboardPage() {
   const [sending, setSending] = useState<StreamRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const loadSeqRef = useRef(0);
 
-  useEffect(() => {
+  const fetchStreams = useCallback(async (signal: AbortSignal) => {
     if (!publicKey) return;
-    let active = true;
-
+    const now = Math.floor(Date.now() / 1000);
     setLoading(true);
     setError(null);
-    const now = Math.floor(Date.now() / 1000);
-    Promise.all([
-      loadRows(publicKey, "recipient", now),
-      loadRows(publicKey, "sender", now),
-    ])
-      .then(([recv, sent]) => {
-        if (!active) return;
+    try {
+      const [recv, sent] = await Promise.all([
+        loadRows(publicKey, "recipient", now, signal),
+        loadRows(publicKey, "sender", now, signal),
+      ]);
+      if (!signal.aborted) {
         setReceiving(recv);
         setSending(sent);
-      })
-      .catch((e) => {
-        if (!active) return;
+      }
+    } catch (e) {
+      if (!signal.aborted) {
         console.error(e);
-        const message =
-          e instanceof RpcTimeoutError
-            ? "The RPC provider didn't respond in time. Check your connection and try again."
-            : "Failed to load streams. Please try again.";
-        setError(message);
-      })
-      .finally(() => { if (active) setLoading(false); });
-
-    return () => { active = false; };
+        setError("Failed to load streams. Please try again.");
+      }
+    } finally {
+      if (!signal.aborted) setLoading(false);
+    }
   }, [publicKey]);
+
+  useEffect(() => {
+    if (!publicKey) {
+      setReceiving([]);
+      setSending([]);
+      setError(null);
+      return;
+    }
+    const controller = new AbortController();
+    fetchStreams(controller.signal);
+    return () => controller.abort();
+  }, [publicKey, fetchStreams]);
 
   const activeCount = useMemo(
     () =>
@@ -105,16 +137,22 @@ export default function DashboardPage() {
   const receivingRate = useMemo(
     () =>
       receiving
-        .filter((s) => s.status === "active")
+        .filter((s) => s.status === "active" && s.info && typeof s.info.ratePerSecond === "bigint")
         .reduce((a, s) => a + s.info.ratePerSecond, 0n),
     [receiving],
   );
   const totalWithdrawn = useMemo(
-    () => receiving.reduce((a, s) => a + s.info.withdrawn, 0n),
+    () =>
+      receiving
+        .filter((s) => s.info && typeof s.info.withdrawn === "bigint")
+        .reduce((a, s) => a + s.info.withdrawn, 0n),
     [receiving],
   );
   const senderCount = useMemo(
-    () => new Set(receiving.map((s) => s.info.sender)).size,
+    () =>
+      new Set(
+        receiving.filter((s) => s.info?.sender).map((s) => s.info.sender),
+      ).size,
     [receiving],
   );
 
@@ -166,6 +204,12 @@ export default function DashboardPage() {
         ))}
       </div>
 
+      {error && (
+        <div className="card text-center py-4 mb-6 text-sm text-red-500 dark:text-red-400">
+          {error}
+        </div>
+      )}
+
       {!connected ? (
         <div className="card text-center py-12 text-sm text-gray-400 dark:text-gray-500">
           Connect your wallet to see your streams.
@@ -199,8 +243,18 @@ export default function DashboardPage() {
             receiving.filter((s) => s.status === "active").length > 0 && (
               <div className="mb-6">
                 <BulkWithdrawButton
-                  activeStreams={receiving.filter((s) => s.status === "active")}
-                  onComplete={() => window.location.reload()}
+                  activeStreams={receiving
+                    .filter((s) => s.status === "active")
+                    .map((s) => ({
+                      id: s.id,
+                      address: s.address,
+                      info: { withdrawable: s.withdrawable },
+                    }))}
+                  onComplete={async () => {
+                    await refreshStreamData();
+                    const controller = new AbortController();
+                    fetchStreams(controller.signal);
+                  }}
                 />
               </div>
             )}
@@ -208,11 +262,8 @@ export default function DashboardPage() {
           {/* Stream list */}
           {loading ? (
             <div className="space-y-3">
-              {[1, 2, 3].map((i) => (
-                <div
-                  key={i}
-                  className="card animate-pulse h-24 bg-gray-50 dark:bg-gray-800"
-                />
+              {Array.from({ length: 3 }).map((_, i) => (
+                <StreamCardSkeleton key={i} />
               ))}
             </div>
           ) : error ? (

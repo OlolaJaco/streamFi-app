@@ -1,25 +1,18 @@
 // Scaffold for Multisig Transaction Coordination
 
+import { copyToClipboard } from './clipboard';
+
 /**
  * Serializes an XDR string and copies it to the clipboard, preventing broadcast.
  * @param xdr - The base64 transaction XDR
  */
 export async function proposeTransaction(xdr: string): Promise<void> {
-  try {
-    await navigator.clipboard.writeText(xdr);
+  // copyToClipboard handles insecure contexts (no navigator.clipboard) via an
+  // execCommand fallback, so this works over plain HTTP too (issue #145).
+  const ok = await copyToClipboard(xdr);
+  if (ok) {
     console.log("Transaction XDR copied to clipboard. Share this with your multisig co-signers.");
-  } catch (error) {
-    console.error("Failed to copy XDR:", error);
-    // Fallback for older browsers
-    const textArea = document.createElement("textarea");
-    textArea.value = xdr;
-    document.body.appendChild(textArea);
-    textArea.select();
-    try {
-      document.execCommand('copy');
-    } catch (err) {
-      console.error('Fallback copy failed', err);
-    }
-    document.body.removeChild(textArea);
+  } else {
+    console.error("Failed to copy XDR to clipboard.");
   }
 }

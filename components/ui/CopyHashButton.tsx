@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Copy, Check } from 'lucide-react';
+import { copyToClipboard } from '@/lib/clipboard';
 
 interface CopyHashButtonProps {
   /** The full transaction hash to copy to clipboard */
@@ -19,12 +20,12 @@ export function CopyHashButton({ hash, className = '' }: CopyHashButtonProps) {
   const [copied, setCopied] = useState(false);
 
   async function handleCopy() {
-    try {
-      await navigator.clipboard.writeText(hash);
+    // copyToClipboard falls back to execCommand when navigator.clipboard is
+    // unavailable (e.g. served over plain HTTP), so this works locally too.
+    const ok = await copyToClipboard(hash);
+    if (ok) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // Clipboard API unavailable (e.g. insecure context) — silently no-op.
     }
   }
 

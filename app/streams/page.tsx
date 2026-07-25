@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Plus } from "lucide-react";
 import { useWallet } from "@/contexts/WalletContext";
 import { StreamCard } from "@/components/stream/StreamCard";
+import { StreamCardSkeleton } from "@/components/stream/StreamCardSkeleton";
 import { streamsBySender, streamsByRecipient } from "@/lib/factory";
 import { getStreamAddress, getStreamInfo } from "@/lib/stream";
 import type { StreamInfo } from "@/lib/stream";
@@ -62,14 +63,22 @@ export default function StreamsPage() {
   const [receiving, setReceiving] = useState<StreamRow[]>([]);
   const [sending, setSending] = useState<StreamRow[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const [statusFilter, setStatusFilter] = useState<"ALL" | StreamStatus>("ALL");
 
   useEffect(() => {
-    if (!publicKey) return;
+    if (!publicKey) {
+      // Wallet disconnected — clear stale stream rows immediately (fixes #81)
+      setReceiving([]);
+      setSending([]);
+      setError(null);
+      return;
+    }
     let active = true;
 
     setLoading(true);
+    setError(null);
     const now = Math.floor(Date.now() / 1000);
     Promise.all([
       loadRows(publicKey, "recipient", now),
@@ -80,7 +89,13 @@ export default function StreamsPage() {
         setReceiving(recv);
         setSending(sent);
       })
-      .catch((e) => { if (active) console.error(e); })
+      .catch((e) => {
+        if (!active) return;
+        console.error(e);
+        setError(e instanceof Error ? e.message : "Failed to load streams.");
+        setReceiving([]);
+        setSending([]);
+      })
       .finally(() => { if (active) setLoading(false); });
 
     return () => { active = false; };
@@ -134,17 +149,23 @@ export default function StreamsPage() {
       </div>
 
       {/* Content */}
+      {error && (
+        <div
+          role="alert"
+          aria-live="polite"
+          className="border border-gray-200 dark:border-gray-800 rounded p-4 text-sm text-gray-500 dark:text-gray-400 mb-4"
+        >
+          {error}
+        </div>
+      )}
       {!connected ? (
         <div className="card text-center py-12 text-sm text-gray-400 dark:text-gray-500">
           Connect your wallet to see your streams.
         </div>
       ) : loading ? (
         <div className="space-y-3">
-          {[1, 2, 3].map((i) => (
-            <div
-              key={i}
-              className="card animate-pulse h-20 bg-gray-50 dark:bg-gray-800"
-            />
+          {Array.from({ length: 3 }).map((_, i) => (
+            <StreamCardSkeleton key={i} />
           ))}
         </div>
       ) : displayed.length === 0 ? (

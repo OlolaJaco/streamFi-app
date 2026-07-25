@@ -14,6 +14,22 @@ All notable changes are documented here. Format based on [Keep a Changelog](http
 - Mobile layout improvements for stream detail page
 - `force_cancel()` action in `StreamActions` for recipients (once contract support is merged)
 
+### Fixed
+- `scValToU64`/`scValToI128` and `streamsBySender`/`streamsByRecipient` now boundary-check the RPC
+  response shape instead of trusting it blindly; the streams list surfaces load failures inline
+  instead of silently logging to console
+- Fixed a `Mutex` scoping bug in `WalletContext` that broke the TypeScript build outright; connect()
+  attempts superseded while waiting on the mutex are now cancelled instead of running their turn
+- `useTransactionStore` no longer grows without bound — terminal transactions are pruned once
+  retained history exceeds 20 entries
+- `BatchStreamCreator` cancels its pending submission on unmount instead of leaving it running
+  against a detached component, and no longer uses `alert()` for error display
+- `WalletContext` now watches for wallet/account changes in the Freighter extension itself
+  (via `WatchWalletChanges`); switching accounts without clicking Disconnect no longer leaves
+  `publicKey` and cached stream/dashboard/transaction data pointed at the previous account, and
+  a locked extension or revoked site access now disconnects the app instead of leaving it in a
+  stale "connected" state
+
 ---
 
 ## [0.2.0] - 2026-04-08
