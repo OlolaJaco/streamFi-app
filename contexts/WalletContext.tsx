@@ -48,9 +48,10 @@ class Mutex {
 
   async acquire(abortSignal?: AbortSignal): Promise<() => void> {
     return new Promise<() => void>((resolve, reject) => {
+      let entry: ((release: () => void) => void) | null = null;
       // If already locked, queue the request
       if (this._locked) {
-        const entry = (release: () => void) => {
+        entry = (release: () => void) => {
           if (abortSignal?.aborted) {
             reject(new Error('Operation aborted'));
             return;
@@ -68,8 +69,10 @@ class Mutex {
       } else if (abortSignal) {
         abortSignal.addEventListener('abort', () => {
           // Remove this entry from queue if it hasn't been resolved yet
-          const idx = this._queue.indexOf(entry!);
-          if (idx !== -1) this._queue.splice(idx, 1);
+          if (entry) {
+            const idx = this._queue.indexOf(entry);
+            if (idx !== -1) this._queue.splice(idx, 1);
+          }
           reject(new Error('Operation aborted'));
         }, { once: true });
       }
@@ -236,15 +239,22 @@ export function WalletProvider({
     const stored = localStorage.getItem('conduit:wallet');
     if (stored) {
       try {
-        const { key, name } = JSON.parse(stored) as { key: string; name: string };
-        if (typeof key === 'string' && key && typeof name === 'string' && name) {
-          setPublicKey(key);
-          setWalletName(name);
+        const parsed = JSON.parse(stored) as { key: string; name: string; exp?: number; expiresAt?: number };
+        const expiry = parsed.exp ?? parsed.expiresAt;
+        if (expiry && Date.now() >= expiry) {
+          // Session expired: purge all sensitive cached data from localStorage and sessionStorage
+          localStorage.clear();
+          sessionStorage.clear();
+          setPublicKey(null);
+          setWalletName(null);
+        } else if (typeof parsed.key === 'string' && parsed.key && typeof parsed.name === 'string' && parsed.name) {
+          setPublicKey(parsed.key);
+          setWalletName(parsed.name);
         } else {
-          localStorage.removeItem('conduit:wallet');
+          localStorage.clear();
         }
       } catch {
-        localStorage.removeItem('conduit:wallet');
+        localStorage.clear();
       }
     }
 
@@ -314,14 +324,17 @@ export function WalletProvider({
     setConnecting(false);
     setPublicKey(null);
     setWalletName(null);
-    localStorage.removeItem('conduit:wallet');
+
+    // Purge all local and session storage sensitive data (fixes #146)
+    localStorage.clear();
+    sessionStorage.clear();
 
     // Abort all in-flight operations immediately
     abortControllerRef.current?.abort();
     abortControllerRef.current = new AbortController();
 
     // Clear all cached stream data so a subsequent wallet connection
-    // cannot see the previous wallet's streams (fixes #81).
+    // cannot see the previous wallet's streams (fixes #81 & #146).
     queryClient.clear();
     clearTransactions();
   }, [clearTransactions]);

@@ -33,6 +33,8 @@ describe('BulkWithdrawButton', () => {
       walletName: 'Freighter',
       connect: vi.fn(),
       disconnect: vi.fn(),
+      pendingOperationCount: 0,
+      maxConcurrentOperations: 5,
     });
     mockWithdraw.mockResolvedValue('tx_hash');
   });

@@ -79,4 +79,39 @@ describe('WalletContext', () => {
 
     document.body.removeChild(container);
   });
+
+  it('clears all localStorage items on disconnect', () => {
+    localStorage.setItem('conduit:wallet', JSON.stringify({ key: 'G123', name: 'Freighter' }));
+    localStorage.setItem('sensitive:cache', 'secret-data');
+
+    const { stateRef, container } = mountWallet();
+    const wallet = stateRef.current;
+
+    act(() => {
+      wallet.disconnect();
+    });
+
+    expect(localStorage.getItem('conduit:wallet')).toBeNull();
+    expect(localStorage.getItem('sensitive:cache')).toBeNull();
+
+    document.body.removeChild(container);
+  });
+
+  it('purges expired session data from localStorage on mount', () => {
+    const pastTimestamp = Date.now() - 10000;
+    localStorage.setItem(
+      'conduit:wallet',
+      JSON.stringify({ key: 'G123', name: 'Freighter', exp: pastTimestamp }),
+    );
+    localStorage.setItem('sensitive:token', 'expired-jwt-token');
+
+    const { stateRef, container } = mountWallet();
+
+    expect(stateRef.current?.connected).toBe(false);
+    expect(stateRef.current?.publicKey).toBeNull();
+    expect(localStorage.getItem('conduit:wallet')).toBeNull();
+    expect(localStorage.getItem('sensitive:token')).toBeNull();
+
+    document.body.removeChild(container);
+  });
 });
