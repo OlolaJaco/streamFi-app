@@ -35,6 +35,7 @@ import {
 import { getNetworkPassphrase } from '@/lib/env';
 import { queryClient } from '@/lib/queryClient';
 import { useTransactionStore } from '@/lib/store';
+import { useRouter } from 'next/navigation';
 
 // ── Concurrency Primitives ───────────────────────────────────────────────────
 
@@ -252,11 +253,7 @@ export function WalletProvider({
   const abortControllerRef = useRef<AbortController | null>(null);
   const semaphoreRef = useRef<Semaphore>(new Semaphore(maxConcurrentOperations));
   const connectMutexRef = useRef<Mutex>(new Mutex());
-  // Tracks the most recent connect() attempt's own controller, so a queued
-  // attempt still waiting on connectMutexRef can be cancelled the moment
-  // it's superseded — instead of silently taking its turn in the mutex
-  // queue before self-discarding via the requestId check below.
-  const pendingConnectAbortRef = useRef<AbortController | null>(null);
+  const router = useRouter();
 
   // Access the Zustand store's reset action outside of a component render
   const clearTransactions = useTransactionStore((s) => s.clearTransactions);
@@ -386,7 +383,8 @@ export function WalletProvider({
     // cannot see the previous wallet's streams (fixes #81 & #146).
     queryClient.clear();
     clearTransactions();
-  }, [clearTransactions]);
+    router.push('/');
+  }, [clearTransactions, router]);
 
   // ── signTx ─────────────────────────────────────────────────────────────────
 
