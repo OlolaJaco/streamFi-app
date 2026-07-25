@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Plus } from "lucide-react";
 import { useWallet } from "@/contexts/WalletContext";
@@ -8,8 +8,9 @@ import { StreamCard } from "@/components/stream/StreamCard";
 import { StreamCardSkeleton } from "@/components/stream/StreamCardSkeleton";
 import { BulkWithdrawButton } from "@/components/stream/BulkWithdrawButton";
 import { streamsBySender, streamsByRecipient } from "@/lib/factory";
-import { getStreamAddress, getStreamInfo } from "@/lib/stream";
+import { getStreamAddress, getStreamInfo, getWithdrawable } from "@/lib/stream";
 import { fromStroops } from "@/lib/format";
+import { queryClient } from "@/lib/queryClient";
 import type { StreamInfo } from "@/lib/stream";
 
 type Tab = "receiving" | "sending";
@@ -18,6 +19,7 @@ type StreamStatus = "active" | "paused" | "ended" | "cancelled";
 interface StreamRow {
   id: string;
   info: StreamInfo;
+  withdrawable: bigint;
   status: StreamStatus;
 }
 
@@ -56,13 +58,17 @@ async function loadRows(
     try {
       const addr = await getStreamAddress(publicKey, id, { signal });
       if (!addr || typeof addr !== "string") continue;
-      const info = await getStreamInfo(publicKey, addr, { signal });
+      const [info, withdrawable] = await Promise.all([
+        getStreamInfo(publicKey, addr, { signal }),
+        getWithdrawable(publicKey, addr),
+      ]);
       if (!info || typeof info !== "object") continue;
       if (typeof info.ratePerSecond !== "bigint") continue;
       if (signal.aborted) return [];
       rows.push({
         id: rowId,
         info,
+        withdrawable,
         status: deriveStatus(info, now),
       });
       seen.add(rowId);
@@ -83,38 +89,43 @@ export default function DashboardPage() {
   const [sending, setSending] = useState<StreamRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const loadSeqRef = useRef(0);
+
+  const fetchStreams = useCallback(async (signal: AbortSignal) => {
+    if (!publicKey) return;
+    const now = Math.floor(Date.now() / 1000);
+    setLoading(true);
+    setError(null);
+    try {
+      const [recv, sent] = await Promise.all([
+        loadRows(publicKey, "recipient", now, signal),
+        loadRows(publicKey, "sender", now, signal),
+      ]);
+      if (!signal.aborted) {
+        setReceiving(recv);
+        setSending(sent);
+      }
+    } catch (e) {
+      if (!signal.aborted) {
+        console.error(e);
+        setError("Failed to load streams. Please try again.");
+      }
+    } finally {
+      if (!signal.aborted) setLoading(false);
+    }
+  }, [publicKey]);
 
   useEffect(() => {
     if (!publicKey) {
-      // Wallet disconnected — clear stale stream rows immediately (fixes #81)
       setReceiving([]);
       setSending([]);
       setError(null);
       return;
     }
     const controller = new AbortController();
-
-    setLoading(true);
-    setError(null);
-    const now = Math.floor(Date.now() / 1000);
-    Promise.all([
-      loadRows(publicKey, "recipient", now, controller.signal),
-      loadRows(publicKey, "sender", now, controller.signal),
-    ])
-      .then(([recv, sent]) => {
-        if (controller.signal.aborted) return;
-        setReceiving(recv);
-        setSending(sent);
-      })
-      .catch((e) => {
-        if (controller.signal.aborted) return;
-        console.error(e);
-        setError("Failed to load streams. Please try again.");
-      })
-      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
-
+    fetchStreams(controller.signal);
     return () => controller.abort();
-  }, [publicKey]);
+  }, [publicKey, fetchStreams]);
 
   const activeCount = useMemo(
     () =>
@@ -230,8 +241,17 @@ export default function DashboardPage() {
             receiving.filter((s) => s.status === "active").length > 0 && (
               <div className="mb-6">
                 <BulkWithdrawButton
-                  activeStreams={receiving.filter((s) => s.status === "active")}
-                  onComplete={() => window.location.reload()}
+                  activeStreams={receiving
+                    .filter((s) => s.status === "active")
+                    .map((s) => ({
+                      id: s.id,
+                      info: { withdrawable: s.withdrawable },
+                    }))}
+                  onComplete={async () => {
+                    await queryClient.invalidateQueries();
+                    const controller = new AbortController();
+                    fetchStreams(controller.signal);
+                  }}
                 />
               </div>
             )}
