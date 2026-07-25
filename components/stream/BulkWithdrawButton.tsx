@@ -4,9 +4,13 @@ import { withdraw } from '@/lib/stream';
 import { Button } from '@/components/ui/Button';
 import { withBoundedParallel, normalizeError } from '@/lib/safe-operations';
 
+const STELLAR_ADDRESS_RE = /^[GC][A-Z0-9]{55}$/;
+const MAX_I128 = BigInt('170141183460469231731687303715884105727');
+
 export interface StreamEntry {
   id?: string;
-  info?: any;
+  address: string;
+  info?: { withdrawable: bigint };
 }
 
 interface BulkWithdrawResult {
@@ -53,7 +57,15 @@ export function BulkWithdrawButton({
     setIsProcessing(true);
 
     const withdrawableStreams = activeStreams.filter(
-      (s): s is StreamEntry & { id: string } => typeof s.id === 'string' && s.id.length > 0 && s.info?.withdrawable != null && s.info.withdrawable > 0n,
+      (s): s is StreamEntry & { id: string; info: { withdrawable: bigint } } =>
+        typeof s.id === 'string' &&
+        s.id.length > 0 &&
+        typeof s.address === 'string' &&
+        STELLAR_ADDRESS_RE.test(s.address) &&
+        s.info?.withdrawable != null &&
+        typeof s.info.withdrawable === 'bigint' &&
+        s.info.withdrawable > 0n &&
+        s.info.withdrawable <= MAX_I128,
     );
 
     setProgress({ done: 0, total: withdrawableStreams.length });
@@ -70,8 +82,9 @@ export function BulkWithdrawButton({
 
         try {
           const streamId = stream.id;
+          const streamAddress = stream.address;
           const amount = stream.info.withdrawable;
-          await withdraw(publicKey!, streamId, amount, signTx, signal);
+          await withdraw(publicKey!, streamAddress, amount, signTx, signal);
 
           if (mounted.current) {
             successCount++;
@@ -114,7 +127,7 @@ export function BulkWithdrawButton({
   }, [publicKey, isProcessing, activeStreams, signTx, maxConcurrency, onComplete]);
 
   const totalAvailable = activeStreams.reduce(
-    (sum, s) => sum + (s.info?.withdrawable || 0n),
+    (sum, s) => sum + (typeof s.info?.withdrawable === 'bigint' ? s.info.withdrawable : 0n),
     0n,
   );
 

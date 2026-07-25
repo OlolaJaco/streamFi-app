@@ -6,15 +6,13 @@
  * undocumented behavior to depend on — the exact failure mode reported here
  * (utility classes, including flex/flexbox ones, silently not applied in a
  * production build while looking fine in dev) is what happens when the
- * PostCSS plugin chain that runs `@tailwind` directives isn't wired up the
- * same way for both. Declaring it explicitly removes that ambiguity (fixes
- * #192).
+ * PostCSS plugin chain that runs @tailwind directives isn't wired up the
+ * same way for both. Declaring it in CommonJS format (rather than .mjs)
+ * removes that ambiguity across all Next.js versions (fixes #192).
  */
-const config = {
+module.exports = {
   plugins: {
     tailwindcss: {},
     autoprefixer: {},
   },
 };
-
-export default config;
