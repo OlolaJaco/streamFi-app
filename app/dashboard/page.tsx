@@ -10,7 +10,7 @@ import { BulkWithdrawButton } from "@/components/stream/BulkWithdrawButton";
 import { streamsBySender, streamsByRecipient } from "@/lib/factory";
 import { getStreamAddress, getStreamInfo, getWithdrawable } from "@/lib/stream";
 import { fromStroops } from "@/lib/format";
-import { queryClient } from "@/lib/queryClient";
+import { refreshStreamData } from "@/lib/queryClient";
 import type { StreamInfo } from "@/lib/stream";
 
 type Tab = "receiving" | "sending";
@@ -248,7 +248,7 @@ export default function DashboardPage() {
                       info: { withdrawable: s.withdrawable },
                     }))}
                   onComplete={async () => {
-                    await queryClient.invalidateQueries();
+                    await refreshStreamData();
                     const controller = new AbortController();
                     fetchStreams(controller.signal);
                   }}
