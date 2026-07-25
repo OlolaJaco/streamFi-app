@@ -30,25 +30,33 @@ const SUBGRAPH_TIMEOUT_MS = 10_000;
 /**
  * Fetch transaction history from the subgraph/indexer.
  *
- * In a real implementation this issues a GraphQL request. It is written to
- * **reject** (rather than hang) when the subgraph is unreachable so the UI can
- * render an error state instead of an infinite loading spinner (issue #144).
- * The `signal` lets callers abort — the page combines it with a timeout so a
- * hung subgraph also surfaces as an error rather than spinning forever.
+ * The `signal` allows callers to abort a hung request. If the signal fires
+ * while a real network call is in-flight, the promise rejects with an
+ * AbortError so the UI shows an error state instead of an infinite spinner.
  */
 export async function fetchTransactionHistory(signal?: AbortSignal): Promise<TransactionRow[]> {
   if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
 
-  // Placeholder for the real GraphQL call, e.g.
-  //   const res = await fetch('/api/graphql', { method: 'POST', signal, body: ... });
-  //   if (!res.ok) throw new Error(`Subgraph returned ${res.status}`);
-  //   return (await res.json()).data.transactions;
-  return DEMO_TXS;
+  return new Promise<TransactionRow[]>((resolve, reject) => {
+    if (signal) {
+      const onAbort = () => reject(new DOMException('Aborted', 'AbortError'));
+      signal.addEventListener('abort', onAbort, { once: true });
+    }
+
+    // Placeholder for the real GraphQL call, e.g.
+    //   const res = await fetch('/api/graphql', { method: 'POST', signal, body: ... });
+    //   if (!res.ok) throw new Error(`Subgraph returned ${res.status}`);
+    //   return (await res.json()).data.transactions;
+    resolve(DEMO_TXS);
+  });
 }
 
 /**
  * Run `fetchTransactionHistory` with a hard timeout so a hung/unresponsive
  * subgraph rejects instead of leaving the caller loading indefinitely.
+ *
+ * Rejects with a descriptive Error on timeout so the UI can display a
+ * user-friendly message and React Query can transition out of 'pending'.
  */
 export async function fetchTransactionHistoryWithTimeout(
   timeoutMs: number = SUBGRAPH_TIMEOUT_MS,
@@ -57,6 +65,11 @@ export async function fetchTransactionHistoryWithTimeout(
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     return await fetchTransactionHistory(controller.signal);
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      throw new Error(`Transaction history timed out after ${timeoutMs / 1000}s — the network may be slow or unavailable.`);
+    }
+    throw err;
   } finally {
     clearTimeout(timer);
   }
