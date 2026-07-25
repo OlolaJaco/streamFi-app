@@ -35,6 +35,30 @@ function getServer(): SorobanRpc.Server {
   return serverInstance;
 }
 
+/**
+ * Default RPC timeout in milliseconds. All network calls in this module
+ * are raced against this deadline so they never hang indefinitely.
+ */
+export const RPC_TIMEOUT_MS = 15_000;
+
+/**
+ * Races `promise` against a timeout. Rejects with an `RpcTimeoutError` if
+ * the promise does not settle within `ms` milliseconds.
+ */
+export class RpcTimeoutError extends Error {
+  constructor(ms: number) {
+    super(`RPC request timed out after ${ms} ms`);
+    this.name = 'RpcTimeoutError';
+  }
+}
+
+function withTimeout<T>(promise: Promise<T>, ms = RPC_TIMEOUT_MS): Promise<T> {
+  const timer = new Promise<never>((_, reject) =>
+    setTimeout(() => reject(new RpcTimeoutError(ms)), ms),
+  );
+  return Promise.race([promise, timer]);
+}
+
 // ── Core pipeline ─────────────────────────────────────────────────────────────
 
 /**
@@ -56,7 +80,7 @@ export async function invokeContract(
   signTx:     (xdrBase64: string) => Promise<string>,
 ): Promise<string> {
   const passphrase = getNetworkPassphrase();
-  const account = await getServer().getAccount(source);
+  const account = await withTimeout(getServer().getAccount(source));
 
   const contract = new Contract(contractId);
   const tx = new TransactionBuilder(account, {
@@ -68,7 +92,7 @@ export async function invokeContract(
     .build();
 
   // Simulate to get auth + footprint
-  const simResult = await getServer().simulateTransaction(tx);
+  const simResult = await withTimeout(getServer().simulateTransaction(tx));
   if (SorobanRpc.Api.isSimulationError(simResult)) {
     throw new Error(`Simulation failed: ${simResult.error}`);
   }
@@ -82,7 +106,7 @@ export async function invokeContract(
   const signedTx  = TransactionBuilder.fromXDR(signedXdr, passphrase);
 
   // Submit
-  const sendResult = await getServer().sendTransaction(signedTx);
+  const sendResult = await withTimeout(getServer().sendTransaction(signedTx));
   if (sendResult.status === 'ERROR') {
     throw new Error(`Submission failed: ${JSON.stringify(sendResult.errorResult)}`);
   }
@@ -91,7 +115,7 @@ export async function invokeContract(
   const hash = sendResult.hash;
   for (let i = 0; i < 30; i++) {
     await sleep(1000);
-    const status = await getServer().getTransaction(hash);
+    const status = await withTimeout(getServer().getTransaction(hash));
     if (status.status === SorobanRpc.Api.GetTransactionStatus.SUCCESS) return hash;
     if (status.status === SorobanRpc.Api.GetTransactionStatus.FAILED) {
       throw new Error(`Transaction failed: ${hash}`);
@@ -115,7 +139,7 @@ export async function simulateReadOnly(
   method:     string,
   args:       xdr.ScVal[],
 ): Promise<xdr.ScVal> {
-  const account  = await getServer().getAccount(source);
+  const account  = await withTimeout(getServer().getAccount(source));
   const contract = new Contract(contractId);
   const tx = new TransactionBuilder(account, {
     fee:             BASE_FEE,
@@ -125,7 +149,7 @@ export async function simulateReadOnly(
     .setTimeout(60)
     .build();
 
-  const result = await getServer().simulateTransaction(tx);
+  const result = await withTimeout(getServer().simulateTransaction(tx));
   if (SorobanRpc.Api.isSimulationError(result)) {
     throw new Error(`Simulation error: ${result.error}`);
   }
