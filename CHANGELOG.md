@@ -24,6 +24,11 @@ All notable changes are documented here. Format based on [Keep a Changelog](http
   retained history exceeds 20 entries
 - `BatchStreamCreator` cancels its pending submission on unmount instead of leaving it running
   against a detached component, and no longer uses `alert()` for error display
+- `WalletContext` now watches for wallet/account changes in the Freighter extension itself
+  (via `WatchWalletChanges`); switching accounts without clicking Disconnect no longer leaves
+  `publicKey` and cached stream/dashboard/transaction data pointed at the previous account, and
+  a locked extension or revoked site access now disconnects the app instead of leaving it in a
+  stale "connected" state
 
 ---
 
