@@ -4,11 +4,9 @@ import { withdraw } from '@/lib/stream';
 import { Button } from '@/components/ui/Button';
 import { withBoundedParallel, normalizeError } from '@/lib/safe-operations';
 
-interface StreamEntry {
-  id: string;
-  info?: {
-    withdrawable: bigint;
-  };
+export interface StreamEntry {
+  id?: string;
+  info?: any;
 }
 
 interface BulkWithdrawResult {
@@ -28,12 +26,13 @@ export function BulkWithdrawButton({
   maxConcurrency?: number;
 }) {
   const { publicKey, signTx } = useWallet();
-  const mounted = useRef(true);
-  const abortControllerRef = useRef<AbortController | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [progress, setProgress] = useState({ done: 0, total: 0 });
+  const [progress, setProgress] = useState<{ done: number; total: number }>({ done: 0, total: 0 });
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const mounted = useRef(true);
 
   useEffect(() => {
+    mounted.current = true;
     return () => {
       mounted.current = false;
       abortControllerRef.current?.abort();
@@ -41,14 +40,16 @@ export function BulkWithdrawButton({
   }, []);
 
   const handleBulkWithdraw = useCallback(async () => {
-    if (!publicKey) return;
-    setIsProcessing(true);
+    if (!publicKey || isProcessing) return;
+
     abortControllerRef.current = new AbortController();
     const signal = abortControllerRef.current.signal;
 
+    setIsProcessing(true);
+
     // Filter streams with withdrawable balance
     const withdrawableStreams = activeStreams.filter(
-      (s) => s.info?.withdrawable != null && s.info.withdrawable > 0n && s.id,
+      (s): s is StreamEntry & { id: string } => typeof s.id === 'string' && Boolean(s.id) && s.info?.withdrawable != null && s.info.withdrawable > 0n,
     );
 
     setProgress({ done: 0, total: withdrawableStreams.length });
@@ -59,7 +60,7 @@ export function BulkWithdrawButton({
     await withBoundedParallel(
       withdrawableStreams,
       async (stream, index) => {
-        if (signal.aborted) {
+        if (signal.aborted || !mounted.current) {
           return { success: false, error: normalizeError(new Error('Bulk operation aborted')) };
         }
 
@@ -95,21 +96,15 @@ export function BulkWithdrawButton({
       },
     );
 
-    // Check if we were aborted
-    if (signal.aborted && mounted.current) {
+    // Check if we were aborted or unmounted
+    if (signal.aborted || !mounted.current) {
       setIsProcessing(false);
-      onComplete?.({
-        successCount,
-        totalCount: withdrawableStreams.length,
-        errors: [...errors, { streamId: 'ABORT', error: 'Operation was cancelled' }],
-      });
       return;
     }
 
-    if (!mounted.current) return;
     setIsProcessing(false);
 
-    if (onComplete) {
+    if (onComplete && mounted.current) {
       onComplete({ successCount, totalCount: withdrawableStreams.length, errors });
     }
   }, [publicKey, activeStreams, signTx, maxConcurrency, onComplete]);

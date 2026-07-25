@@ -10,7 +10,7 @@
 
 export class OperationAbortedError extends Error {
   readonly code = 'OPERATION_ABORTED';
-  constructor(message = 'Operation was aborted') {
+  constructor(message = 'Operation aborted') {
     super(message);
     this.name = 'OperationAbortedError';
   }
@@ -79,11 +79,11 @@ export function normalizeError(err: unknown, context?: string): NormalizedError 
   } else if (message.includes('Freighter') || message.includes('wallet') || message.includes('signing')) {
     source = 'wallet';
     retryable = false;
-  } else if (message.includes('network') || message.includes('fetch') || message.includes('ECONNREFUSED')) {
-    source = 'network';
-    retryable = true;
-  } else if (message.includes('Simulation') || message.includes('simulation') || message.includes('rpc')) {
+  } else if (message.includes('Simulation') || message.includes('simulation') || message.includes('No result returned')) {
     source = 'rpc';
+    retryable = false;
+  } else if (message.includes('network') || message.includes('fetch') || message.includes('ECONNREFUSED') || message.includes('rpc')) {
+    source = 'network';
     retryable = true;
   } else if (message.includes('Invalid') || message.includes('Missing') || message.includes('Malformed')) {
     source = 'validation';

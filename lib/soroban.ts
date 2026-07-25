@@ -134,9 +134,11 @@ async function withRetry<T>(
       }
 
       // Exponential backoff with jitter
-      const delay = Math.min(
-        BASE_RETRY_MS * Math.pow(2, attempt) + Math.random() * 500,
-        MAX_RETRY_MS,
+      const delay = Math.floor(
+        Math.min(
+          BASE_RETRY_MS * Math.pow(2, attempt) + Math.random() * 500,
+          MAX_RETRY_MS,
+        ),
       );
       await sleep(delay, options?.signal);
     }
@@ -280,7 +282,7 @@ export async function invokeContract(
       const xdrBase64 = assembled.toEnvelope().toXDR('base64');
 
       // Sign via wallet (pass signal for cancellation)
-      const signedXdr = await signTx(xdrBase64, signal);
+      const signedXdr = signal ? await signTx(xdrBase64, signal) : await signTx(xdrBase64);
       if (signal?.aborted) throw new OperationAbortedError();
       if (typeof signedXdr !== 'string' || !signedXdr) {
         throw new TypeError('Wallet returned an invalid signed transaction');

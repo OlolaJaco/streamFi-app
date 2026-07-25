@@ -50,11 +50,17 @@ export async function streamsBySender(
 ): Promise<bigint[]> {
   validatePage(offset, limit);
   if (isMock()) return SENDER_STREAM_IDS;
-  const result = await simulateReadOnly(source, FACTORY()!, 'streams_by_sender', [
-    new Address(sender).toScVal(),
-    nativeToScVal(offset, { type: 'u32' }),
-    nativeToScVal(limit,  { type: 'u32' }),
-  ], options);
+  const args = [
+    source,
+    FACTORY()!,
+    'streams_by_sender',
+    [
+      new Address(sender).toScVal(),
+      nativeToScVal(offset, { type: 'u32' }),
+      nativeToScVal(limit,  { type: 'u32' }),
+    ],
+  ] as const;
+  const result = options ? await simulateReadOnly(args[0], args[1], args[2], args[3] as any, options) : await simulateReadOnly(args[0], args[1], args[2], args[3] as any);
   return result.vec()?.map(v => scValToU64(v)) ?? [];
 }
 
@@ -68,11 +74,17 @@ export async function streamsByRecipient(
 ): Promise<bigint[]> {
   validatePage(offset, limit);
   if (isMock()) return RECIPIENT_STREAM_IDS;
-  const result = await simulateReadOnly(source, FACTORY()!, 'streams_by_recipient', [
-    new Address(recipient).toScVal(),
-    nativeToScVal(offset, { type: 'u32' }),
-    nativeToScVal(limit,  { type: 'u32' }),
-  ], options);
+  const args = [
+    source,
+    FACTORY()!,
+    'streams_by_recipient',
+    [
+      new Address(recipient).toScVal(),
+      nativeToScVal(offset, { type: 'u32' }),
+      nativeToScVal(limit,  { type: 'u32' }),
+    ],
+  ] as const;
+  const result = options ? await simulateReadOnly(args[0], args[1], args[2], args[3] as any, options) : await simulateReadOnly(args[0], args[1], args[2], args[3] as any);
   return result.vec()?.map(v => scValToU64(v)) ?? [];
 }
 
