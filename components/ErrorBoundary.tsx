@@ -26,8 +26,15 @@ export class ErrorBoundary extends Component<Props, State> {
     errorCount: 0,
   };
 
-  public static getDerivedStateFromError(error: Error): State {
-    return { hasError: true, error, errorCount: 0 };
+  public static getDerivedStateFromError(
+    error: Error,
+  ): Partial<State> {
+    // NOTE: A static lifecycle method cannot read previous state, so it must
+    // NOT reset errorCount here. Returning errorCount: 0 on every error made
+    // the circuit breaker unreachable (each new error zeroed the running
+    // count that componentDidCatch maintains). We now update only the error
+    // fields and let componentDidCatch own the count.
+    return { hasError: true, error };
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
@@ -50,7 +57,7 @@ export class ErrorBoundary extends Component<Props, State> {
   private handleUnhandledRejection = (event: PromiseRejectionEvent) => {
     const reason = event.reason instanceof Error ? event.reason : new Error(String(event.reason));
     console.error('Unhandled promise rejection:', reason.message);
-    this.props.onError?.(reason, { componentStack: '' });
+    this.props.onError?.(reason, { componentStack: null });
   };
 
   public componentDidMount() {
@@ -62,8 +69,21 @@ export class ErrorBoundary extends Component<Props, State> {
     if (this.resetTimer) clearTimeout(this.resetTimer);
   }
 
+  // Full reset: clears the error AND the running count. Used by the timed
+  // auto-recovery so the breaker starts fresh after the cooldown window.
   private reset = () => {
+    if (this.resetTimer) {
+      clearTimeout(this.resetTimer);
+      this.resetTimer = null;
+    }
     this.setState({ hasError: false, error: null, errorCount: 0 });
+  };
+
+  // Manual retry ("Try again"): clears the current error to re-render the
+  // children, but PRESERVES errorCount so that repeated rapid failures
+  // accumulate toward the circuit breaker instead of resetting each time.
+  private retry = () => {
+    this.setState((prev) => ({ hasError: false, error: null, errorCount: prev.errorCount }));
   };
 
   private scheduleReset = () => {
@@ -96,7 +116,7 @@ export class ErrorBoundary extends Component<Props, State> {
           React.createElement('h2', { className: 'text-lg font-semibold text-gray-700 dark:text-gray-300 mb-2' }, 'Something went wrong'),
           React.createElement('p', { className: 'text-sm text-gray-500 dark:text-gray-400 mb-4' }, this.state.error?.message || 'An unexpected error occurred.'),
           React.createElement('button', {
-            onClick: this.reset,
+            onClick: this.retry,
             className: 'px-4 py-2 bg-black text-white dark:bg-white dark:text-black rounded text-sm hover:opacity-80 transition-opacity',
           }, 'Try again'),
         ),
