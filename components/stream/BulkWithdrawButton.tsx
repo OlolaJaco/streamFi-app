@@ -111,7 +111,7 @@ export function BulkWithdrawButton({
     if (onComplete && mounted.current) {
       onComplete({ successCount, totalCount: withdrawableStreams.length, errors });
     }
-  }, [publicKey, activeStreams, signTx, maxConcurrency, onComplete]);
+  }, [publicKey, isProcessing, activeStreams, signTx, maxConcurrency, onComplete]);
 
   const totalAvailable = activeStreams.reduce(
     (sum, s) => sum + (s.info?.withdrawable || 0n),
