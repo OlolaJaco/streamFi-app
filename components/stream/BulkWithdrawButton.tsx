@@ -4,9 +4,12 @@ import { withdraw } from '@/lib/stream';
 import { Button } from '@/components/ui/Button';
 import { withBoundedParallel, normalizeError } from '@/lib/safe-operations';
 
-export interface StreamEntry {
+interface StreamEntry {
   id?: string;
-  info?: any;
+  info?: {
+    withdrawable?: bigint;
+    [key: string]: any;
+  } | any;
 }
 
 interface BulkWithdrawResult {
@@ -49,7 +52,8 @@ export function BulkWithdrawButton({
 
     // Filter streams with withdrawable balance
     const withdrawableStreams = activeStreams.filter(
-      (s): s is StreamEntry & { id: string } => typeof s.id === 'string' && Boolean(s.id) && s.info?.withdrawable != null && s.info.withdrawable > 0n,
+      (s): s is StreamEntry & { id: string; info: { withdrawable: bigint } } =>
+        Boolean(s.id) && s.info?.withdrawable != null && s.info.withdrawable > 0n,
     );
 
     setProgress({ done: 0, total: withdrawableStreams.length });
@@ -66,7 +70,7 @@ export function BulkWithdrawButton({
 
         try {
           const streamId = stream.id;
-          const amount = stream.info!.withdrawable!;
+          const amount = stream.info.withdrawable;
           await withdraw(publicKey!, streamId, amount, signTx, signal);
 
           if (mounted.current) {
@@ -76,8 +80,9 @@ export function BulkWithdrawButton({
 
           return { success: true, data: streamId };
         } catch (err) {
-          const normalized = normalizeError(err, `Stream ${stream.id}`);
-          errors.push({ streamId: stream.id, error: normalized.message });
+          const streamId = stream.id;
+          const normalized = normalizeError(err, `Stream ${streamId}`);
+          errors.push({ streamId, error: normalized.message });
 
           if (mounted.current) {
             setProgress((p) => ({ ...p, done: p.done + 1 }));
