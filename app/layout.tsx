@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { Providers } from '@/components/Providers';
 import { Navbar }    from '@/components/Navbar';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -20,7 +21,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <Providers>
           <Navbar />
           <main className="pt-16 min-h-screen">
-            {children}
+            {/* A render crash in one route (e.g. a component reading an
+                undefined value in a state hook) should not take down the
+                entire app shell — contain it and offer a retry instead. */}
+            <ErrorBoundary>
+              {children}
+            </ErrorBoundary>
           </main>
           <footer className="border-t border-gray-200 dark:border-gray-800 py-8 mt-16">
             <div className="max-w-5xl mx-auto px-4 flex items-center justify-between text-xs text-gray-400 dark:text-gray-500">
