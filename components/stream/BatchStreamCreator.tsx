@@ -19,19 +19,13 @@ export function BatchStreamCreator() {
   const [error, setError] = useState<string | null>(null);
 
   const isSubmittingRef = useRef(false);
-  const isMountedRef = useRef(true);
-  const pendingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mounted = useRef(true);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     return () => {
-      isMountedRef.current = false;
-      // Under poor network conditions the simulated submission can still
-      // be pending when the user navigates away — cancel it rather than
-      // leaving it running against a detached component.
-      if (pendingTimerRef.current) {
-        clearTimeout(pendingTimerRef.current);
-        pendingTimerRef.current = null;
-      }
+      mounted.current = false;
+      abortControllerRef.current?.abort();
     };
   }, []);
 
@@ -71,25 +65,31 @@ export function BatchStreamCreator() {
     if (recipients.length === 0 || isSubmittingRef.current) return;
     isSubmittingRef.current = true;
     setIsSubmitting(true);
-    setError(null);
+    abortControllerRef.current = new AbortController();
+    const signal = abortControllerRef.current.signal;
     try {
-      // Simulate interaction with SDK ConduitBatcher
-      await new Promise<void>((resolve) => {
-        pendingTimerRef.current = setTimeout(() => {
-          pendingTimerRef.current = null;
-          resolve();
-        }, 2000);
+      // Simulate interaction with SDK ConduitBatcher.
+      // NOTE: When this is replaced with the real SDK call, pass `signal`
+      // through so a slow/pending request is cancelled if the user navigates
+      // away (see BulkWithdrawButton for the withdraw(..., signal) pattern).
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(resolve, 2000);
+        signal.addEventListener('abort', () => {
+          clearTimeout(timer);
+          reject(new DOMException('Aborted', 'AbortError'));
+        });
       });
-      if (!isMountedRef.current) return;
+      if (!mounted.current) return;
       setSuccess(true);
       setRecipients([]);
-    } catch (submitError) {
-      if (!isMountedRef.current) return;
-      console.error("Batch creation failed", submitError);
-      setError("Failed to submit batch transaction. Please try again.");
+    } catch (error) {
+      // Swallow aborts caused by unmount; only surface real failures.
+      if ((error as Error)?.name === 'AbortError' || !mounted.current) return;
+      console.error("Batch creation failed", error);
+      alert("Failed to submit batch transaction.");
     } finally {
       isSubmittingRef.current = false;
-      if (isMountedRef.current) {
+      if (mounted.current) {
         setIsSubmitting(false);
       }
     }

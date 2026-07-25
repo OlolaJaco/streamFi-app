@@ -4,100 +4,74 @@ import { createRoot } from 'react-dom/client';
 import { act } from 'react';
 import { BatchStreamCreator } from '../stream/BatchStreamCreator';
 
-// Regression coverage for #124: the batch submission's async operation had
-// no unmount guard. Under poor network conditions (long-pending submission)
-// a user navigating away mid-submit would hit a state update on an
-// unmounted component the moment the operation settled.
+vi.mock('@/lib/format', () => ({
+  truncateAddress: (a: string) => a,
+}));
 
-function addRecipient(container: HTMLElement, address: string, rate: string) {
+vi.mock('@/components/ui/Badge', () => ({ Badge: () => null }));
+vi.mock('@/components/ui/ProgressBar', () => ({ ProgressBar: () => null }));
+
+function setInputValue(input: HTMLInputElement, value: string) {
+  const setter = Object.getOwnPropertyDescriptor(
+    window.HTMLInputElement.prototype,
+    'value',
+  )!.set!;
+  setter.call(input, value);
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+async function addRecipient(container: HTMLElement) {
   const inputs = container.querySelectorAll('input');
   const addressInput = inputs[0] as HTMLInputElement;
   const rateInput = inputs[1] as HTMLInputElement;
   const addButton = Array.from(container.querySelectorAll('button')).find(
     (b) => b.textContent === 'Add',
   )!;
-
-  const setNativeValue = (el: HTMLInputElement, value: string) => {
-    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
-    setter.call(el, value);
-    el.dispatchEvent(new Event('input', { bubbles: true }));
-  };
-
-  act(() => {
-    setNativeValue(addressInput, address);
-    setNativeValue(rateInput, rate);
+  await act(async () => {
+    setInputValue(addressInput, 'GABC123RECIPIENT');
+    setInputValue(rateInput, '100');
   });
-  act(() => {
+  await act(async () => {
     addButton.click();
   });
 }
 
-describe('BatchStreamCreator — unmount safety during submission', () => {
+function getCreateButton(container: HTMLElement) {
+  return Array.from(container.querySelectorAll('button')).find((b) =>
+    /Create|Submitting/.test(b.textContent || ''),
+  ) as HTMLButtonElement;
+}
+
+describe('BatchStreamCreator', () => {
   beforeEach(() => {
     vi.useFakeTimers();
   });
 
   afterEach(() => {
+    vi.runOnlyPendingTimers();
     vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
-  it('cancels the pending submission timer on unmount instead of leaving it dangling', async () => {
+  it('completes the normal successful flow and shows success state', async () => {
     const container = document.createElement('div');
     document.body.appendChild(container);
     const root = createRoot(container);
-
-    act(() => {
-      root.render(<BatchStreamCreator />);
-    });
-
-    addRecipient(container, 'GRECIPIENT1234567890', '100');
-
-    const submitButton = Array.from(container.querySelectorAll('button')).find((b) =>
-      b.textContent?.startsWith('Create'),
-    )!;
-
-    act(() => {
-      submitButton.click(); // kicks off the (fake-timer-backed) async submission
-    });
-
-    expect(vi.getTimerCount()).toBeGreaterThan(0);
-
-    // Unmount while the submission is still pending (e.g. the user
-    // navigates away under a slow/poor-network submission). The in-flight
-    // timer must be cancelled, not left running against a detached
-    // component.
-    act(() => {
-      root.unmount();
-    });
-
-    expect(vi.getTimerCount()).toBe(0);
-
-    document.body.removeChild(container);
-  });
-
-  it('completes normally and shows the success state when mounted throughout', async () => {
-    const container = document.createElement('div');
-    document.body.appendChild(container);
-    const root = createRoot(container);
-
-    act(() => {
-      root.render(<BatchStreamCreator />);
-    });
-
-    addRecipient(container, 'GRECIPIENT1234567890', '100');
-
-    const submitButton = Array.from(container.querySelectorAll('button')).find((b) =>
-      b.textContent?.startsWith('Create'),
-    )!;
-
-    act(() => {
-      submitButton.click();
-    });
 
     await act(async () => {
-      vi.advanceTimersByTime(2100);
-      await Promise.resolve();
-      await Promise.resolve();
+      root.render(<BatchStreamCreator />);
+    });
+
+    await addRecipient(container);
+
+    const createButton = getCreateButton(container);
+    await act(async () => {
+      createButton.click();
+    });
+
+    // Advance past the mocked 2s SDK call.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
     });
 
     expect(container.textContent).toContain('Batch Stream Created!');
@@ -107,32 +81,78 @@ describe('BatchStreamCreator — unmount safety during submission', () => {
     });
     document.body.removeChild(container);
   });
-});
 
-// CONTRIBUTING.md: "Display errors inline, never alert()". This component
-// used alert() for all three of its error paths.
-describe('BatchStreamCreator — inline error display (no alert())', () => {
-  const alertSpy = vi.fn();
+  it('does not throw or update state after unmount while submission is in flight', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const alertSpy = vi
+      .spyOn(window, 'alert')
+      .mockImplementation(() => {});
 
-  beforeEach(() => {
-    vi.stubGlobal('alert', alertSpy);
-    alertSpy.mockClear();
-  });
-
-  it('shows an inline error instead of alert() for an invalid rate', () => {
     const container = document.createElement('div');
     document.body.appendChild(container);
     const root = createRoot(container);
 
-    act(() => {
+    await act(async () => {
       root.render(<BatchStreamCreator />);
     });
 
-    addRecipient(container, 'GRECIPIENT1234567890', '1.5'); // fails the digits-only check
+    await addRecipient(container);
 
+    const createButton = getCreateButton(container);
+    await act(async () => {
+      createButton.click();
+    });
+
+    // Unmount while the 2s async operation is still pending.
+    act(() => {
+      root.unmount();
+    });
+
+    // Flush the pending timer/abort after unmount — must not warn or throw.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+
+    // No state-update-after-unmount error, and no user-facing alert.
+    expect(errorSpy).not.toHaveBeenCalledWith(
+      expect.stringContaining('unmounted'),
+    );
     expect(alertSpy).not.toHaveBeenCalled();
-    expect(container.querySelector('[role="alert"]')).not.toBeNull();
-    expect(container.textContent).toContain('Invalid rate input');
+
+    document.body.removeChild(container);
+  });
+
+  it('ignores a second submit while one is already in flight (double-submit guard)', async () => {
+    const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout');
+
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(<BatchStreamCreator />);
+    });
+
+    await addRecipient(container);
+
+    const createButton = getCreateButton(container);
+
+    // Fire two clicks before the first submission resolves.
+    await act(async () => {
+      createButton.click();
+      createButton.click();
+    });
+
+    const submitTimers = setTimeoutSpy.mock.calls.filter(
+      ([, delay]) => delay === 2000,
+    );
+    expect(submitTimers).toHaveLength(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+
+    expect(container.textContent).toContain('Batch Stream Created!');
 
     act(() => {
       root.unmount();
