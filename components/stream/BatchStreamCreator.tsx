@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Badge } from '@/components/ui/Badge';
 import { ProgressBar } from '@/components/ui/ProgressBar';
 import { truncateAddress } from '@/lib/format';
@@ -18,6 +18,15 @@ export function BatchStreamCreator() {
   const [success, setSuccess] = useState(false);
 
   const isSubmittingRef = useRef(false);
+  const mounted = useRef(true);
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    return () => {
+      mounted.current = false;
+      abortControllerRef.current?.abort();
+    };
+  }, []);
 
   const addRecipient = () => {
     if (!addressInput || !rateInput) return;
@@ -43,17 +52,33 @@ export function BatchStreamCreator() {
     if (recipients.length === 0 || isSubmittingRef.current) return;
     isSubmittingRef.current = true;
     setIsSubmitting(true);
+    abortControllerRef.current = new AbortController();
+    const signal = abortControllerRef.current.signal;
     try {
-      // Simulate interaction with SDK ConduitBatcher
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Simulate interaction with SDK ConduitBatcher.
+      // NOTE: When this is replaced with the real SDK call, pass `signal`
+      // through so a slow/pending request is cancelled if the user navigates
+      // away (see BulkWithdrawButton for the withdraw(..., signal) pattern).
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(resolve, 2000);
+        signal.addEventListener('abort', () => {
+          clearTimeout(timer);
+          reject(new DOMException('Aborted', 'AbortError'));
+        });
+      });
+      if (!mounted.current) return;
       setSuccess(true);
       setRecipients([]);
     } catch (error) {
+      // Swallow aborts caused by unmount; only surface real failures.
+      if ((error as Error)?.name === 'AbortError' || !mounted.current) return;
       console.error("Batch creation failed", error);
       alert("Failed to submit batch transaction.");
     } finally {
       isSubmittingRef.current = false;
-      setIsSubmitting(false);
+      if (mounted.current) {
+        setIsSubmitting(false);
+      }
     }
   };
 
