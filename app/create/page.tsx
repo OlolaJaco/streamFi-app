@@ -7,12 +7,13 @@ import { z, ZodType } from 'zod';
 import { ArrowRight, Info } from 'lucide-react';
 import { useWallet }        from '@/contexts/WalletContext';
 import { createStream }     from '@/lib/factory';
-import { toStroops }        from '@/lib/format';
 import { TOKENS_TESTNET, tokenLogoUrl } from '@/lib/tokens';
 import { CopyHashButton }   from '@/components/ui/CopyHashButton';
 import { useDebounce }      from '@/hooks/useDebounce';
 import { refreshStreamData } from '@/lib/queryClient';
 import styles from './CreateStream.module.css';
+import { toStroops, wouldRateTruncateToZero } from '@/lib/format';
+
 
 const schema = z.object({
   recipient:       z.string()
@@ -110,6 +111,20 @@ export default function CreatePage() {
   const ratePerDay = deposit && duration
     ? (parseFloat(deposit) / (duration / 86400)).toFixed(4)
     : null;
+  {rateWouldBeZero && (
+                <p className="text-red-600 font-semibold">
+                  Deposit too small for this duration — increase the amount or shorten the duration.
+                </p>
+              )}
+
+  // Live check, mirrors the exact bigint math onSubmit uses (see #243):
+  // depositStroops / durationSeconds truncates, and a small deposit over a
+  // long duration can silently compute to a rate of 0n with nothing ever
+  // streaming out. Caught here so the form blocks submission with a clear
+  // message instead of letting funds get locked into a dead stream.
+  const rateWouldBeZero = deposit && duration
+    ? wouldRateTruncateToZero(deposit, tokenDecimals, duration)
+    : false;
 
   async function onSubmit(data: FormValues) {
     if (!publicKey) {
@@ -130,6 +145,11 @@ export default function CreatePage() {
       const depositStroops = toStroops(data.depositAmount, tokenMeta.decimals);
       if (depositStroops <= 0n) throw new Error('Deposit must be greater than 0');
       const rateStroops    = depositStroops / BigInt(data.durationSeconds);
+      if (rateStroops <= 0n) {
+        throw new Error(
+          'Deposit too small for this duration — increase the amount or shorten the duration.',
+        );
+      }
       const startTime      = Math.floor(Date.now() / 1000) + 60; // 60s buffer
       const endTime        = startTime + data.durationSeconds;
 
@@ -308,7 +328,7 @@ export default function CreatePage() {
         {/* Submit */}
         <button
           type="submit"
-          disabled={pending || !connected}
+          disabled={pending || !connected || rateWouldBeZero}
           className="btn-primary w-full"
         >
           {pending ? 'Signing transaction…' : 'Create stream'}
