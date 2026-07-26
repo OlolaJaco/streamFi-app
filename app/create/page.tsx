@@ -111,11 +111,6 @@ export default function CreatePage() {
   const ratePerDay = deposit && duration
     ? (parseFloat(deposit) / (duration / 86400)).toFixed(4)
     : null;
-  {rateWouldBeZero && (
-                <p className="text-red-600 font-semibold">
-                  Deposit too small for this duration — increase the amount or shorten the duration.
-                </p>
-              )}
 
   // Live check, mirrors the exact bigint math onSubmit uses (see #243):
   // depositStroops / durationSeconds truncates, and a small deposit over a
@@ -296,6 +291,11 @@ export default function CreatePage() {
               {ratePerDay && (
                 <p>
                   ≈ <span className="font-semibold text-black dark:text-white">{ratePerDay} {token}</span> per day
+                </p>
+              )}
+              {rateWouldBeZero && (
+                <p className="text-red-600 font-semibold">
+                  Deposit too small for this duration — increase the amount or shorten the duration.
                 </p>
               )}
             </div>
