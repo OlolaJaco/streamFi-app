@@ -323,11 +323,21 @@ export function WalletProvider({
     const myAbort = new AbortController();
     pendingConnectAbortRef.current = myAbort;
 
+    const clearConnectingState = () => {
+      if (requestId === pendingRequestIdRef.current && isMountedRef.current) {
+        setConnecting(false);
+      }
+      if (pendingConnectAbortRef.current === myAbort) {
+        pendingConnectAbortRef.current = null;
+      }
+    };
+
     let release: () => void;
     try {
       release = await connectMutexRef.current.acquire(myAbort.signal);
     } catch {
       // Aborted while queued — the call that superseded us owns cleanup.
+      clearConnectingState();
       return;
     }
     try {
@@ -365,11 +375,12 @@ export function WalletProvider({
       setPublicKey(address);
       setWalletName('Freighter');
       localStorage.setItem('conduit:wallet', JSON.stringify({ key: address, name: 'Freighter' }));
+    } catch (error) {
+      clearConnectingState();
+      throw error;
     } finally {
       release();
-      if (requestId === pendingRequestIdRef.current && isMountedRef.current) {
-        setConnecting(false);
-      }
+      clearConnectingState();
     }
   }, []);
 
