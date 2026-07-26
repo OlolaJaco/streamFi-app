@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useWallet } from "@/contexts/WalletContext";
 import { CopyHashButton } from "@/components/ui/CopyHashButton";
 
+const STELLAR_ADDRESS_RE = /^[GA][A-Z0-9]{55}$/;
+
 type ConnectionState =
   | { status: "loading" }
   | { status: "connected"; publicKey: string; walletName: string | null }
@@ -15,7 +17,7 @@ function useConnectionState(): ConnectionState {
   const { publicKey, connected, walletName, connecting } = wallet;
 
   if (connecting) return { status: "loading" };
-  if (connected && publicKey) {
+  if (connected && publicKey && STELLAR_ADDRESS_RE.test(publicKey)) {
     return { status: "connected", publicKey, walletName };
   }
   return { status: "disconnected" };
@@ -27,8 +29,9 @@ export default function ProfilePage() {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async (text: string) => {
+    if (!text || typeof text !== "string" || !STELLAR_ADDRESS_RE.test(text.trim())) return;
     try {
-      await navigator.clipboard.writeText(text);
+      await navigator.clipboard.writeText(text.trim());
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
