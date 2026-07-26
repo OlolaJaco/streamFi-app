@@ -422,7 +422,11 @@ chore(create): typecheck and lint clean after create page changes
 - [ ] No `Number()` on large bigint values
 - [ ] No `any` types in TypeScript
 - [ ] No direct imports of `@stellar/stellar-sdk` in page or component files (only `lib/`)
-- [ ] Wallet address validation uses `StrKey.isValidEd25519PublicKey()` (not length-only)
+- [ ] Wallet address validation uses `StrKey.isValidEd25519PublicKey()` (not length-only) — this
+      is the standard going forward; existing regex-based validation in `TokenSelector.tsx`,
+      `BulkWithdrawButton.tsx`, and `BatchStreamCreator.tsx` predates this checklist item and is
+      tracked separately for migration, not exempted from it. New/changed validation code must
+      meet this bar.
 - [ ] 5-commit minimum is met and commits are in logical order
 - [ ] Screenshots attached for visible UI changes
 
