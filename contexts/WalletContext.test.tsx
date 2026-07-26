@@ -191,6 +191,30 @@ describe('WalletContext', () => {
     document.body.removeChild(container);
   });
 
+  it('clears the connecting state when the access-request step times out', async () => {
+    vi.useFakeTimers();
+
+    mockedFreighter.isConnected.mockResolvedValue({ isConnected: true });
+    mockedFreighter.requestAccess.mockImplementationOnce(() => new Promise(() => {}));
+
+    const { stateRef, container } = mountWallet();
+    const wallet = stateRef.current;
+
+    let caught: unknown;
+    await act(async () => {
+      const pending = wallet.connect().catch((e: unknown) => { caught = e; });
+      await vi.advanceTimersByTimeAsync(15_001);
+      await pending;
+    });
+
+    expect(caught).toBeInstanceOf(Error);
+    expect((caught as Error).message).toMatch(/timed out/i);
+    expect(stateRef.current?.connecting).toBe(false);
+
+    vi.useRealTimers();
+    document.body.removeChild(container);
+  });
+
   it('purges cached wallet data when the connected account changes underneath the app (fixes #88)', async () => {
     mockedFreighter.isConnected.mockResolvedValue({ isConnected: true });
     mockedFreighter.requestAccess.mockResolvedValue({ address: 'GAFIRSTACCOUNT', error: null } as any);
