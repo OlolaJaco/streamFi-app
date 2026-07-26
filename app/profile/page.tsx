@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useMemo } from "react";
 import Link from "next/link";
 import { useWallet } from "@/contexts/WalletContext";
 import { CopyHashButton } from "@/components/ui/CopyHashButton";
@@ -25,19 +25,6 @@ function useConnectionState(): ConnectionState {
 
 export default function ProfilePage() {
   const connection = useConnectionState();
-
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = async (text: string) => {
-    if (!text || typeof text !== "string" || !STELLAR_ADDRESS_RE.test(text.trim())) return;
-    try {
-      await navigator.clipboard.writeText(text.trim());
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // clipboard not available — silently ignore
-    }
-  };
 
   const shortenedKey = useMemo(() => {
     if (connection.status !== "connected") return "";
