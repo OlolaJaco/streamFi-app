@@ -4,7 +4,44 @@ import {
   toStroops,
   formatDuration,
   truncateAddress,
+  wouldRateTruncateToZero,
 } from './format.js';
+
+describe('wouldRateTruncateToZero', () => {
+  it('is true for a small deposit over the default 30-day duration (issue #243)', () => {
+    expect(wouldRateTruncateToZero('0.001', 7, 2_592_000)).toBe(true);
+  });
+
+  it('is false when the rate computes to a non-zero value', () => {
+    expect(wouldRateTruncateToZero('1000', 7, 2_592_000)).toBe(false);
+  });
+
+  it('is false right at the boundary where the rate is exactly 1', () => {
+    expect(wouldRateTruncateToZero('0.2592', 7, 2_592_000)).toBe(false);
+  });
+
+  it('is true one stroop below that boundary', () => {
+    expect(wouldRateTruncateToZero('0.2591999', 7, 2_592_000)).toBe(true);
+  });
+
+  it('is false for an empty deposit amount', () => {
+    expect(wouldRateTruncateToZero('', 7, 2_592_000)).toBe(false);
+  });
+
+  it('is false for a zero deposit amount', () => {
+    expect(wouldRateTruncateToZero('0', 7, 2_592_000)).toBe(false);
+  });
+
+  it('is false for a non-finite or non-positive duration (still being typed)', () => {
+    expect(wouldRateTruncateToZero('0.001', 7, Number.NaN)).toBe(false);
+    expect(wouldRateTruncateToZero('0.001', 7, 0)).toBe(false);
+    expect(wouldRateTruncateToZero('0.001', 7, -1)).toBe(false);
+  });
+
+  it('respects a token with fewer decimals', () => {
+    expect(wouldRateTruncateToZero('1', 2, 2_592_000)).toBe(true);
+  });
+});
 
 describe('fromStroops', () => {
   it('formats a whole-number amount', () => {
