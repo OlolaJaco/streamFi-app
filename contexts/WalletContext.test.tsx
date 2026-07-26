@@ -366,7 +366,7 @@ describe('WalletContext', () => {
     const wallet = stateRef.current;
     expect(wallet.connected).toBe(true);
 
-    let resolveSign: (v: { signedTxXdr: string; error: null }) => void;
+    let resolveSign: (v: { signedTxXdr: string; signerAddress: string; error: null }) => void;
     mockedFreighter.signTransaction.mockImplementation(
       () => new Promise((resolve) => { resolveSign = resolve; }),
     );
@@ -393,7 +393,7 @@ describe('WalletContext', () => {
     // reject rather than resolve with a now-stale signed transaction.
     let caught: unknown;
     await act(async () => {
-      resolveSign!({ signedTxXdr: 'signed-xdr', error: null });
+      resolveSign!({ signedTxXdr: 'signed-xdr', signerAddress: 'GADISCONNECTTEST', error: null });
       await signPromise.catch((e) => { caught = e; });
     });
 
