@@ -13,6 +13,7 @@ const NAV = [
   { href: '/transactions', label: 'History'    },
   { href: '/create',       label: 'Create'     },
   { href: '/dashboard',    label: 'Dashboard'  },
+  { href: '/profile',      label: 'Profile'    },
 ];
 
 export function Navbar() {
