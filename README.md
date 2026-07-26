@@ -160,7 +160,7 @@ conduit-app/
 │   │   ├── WithdrawButton.tsx  # Withdraw with pending state
 │   │   └── RateTicker.tsx      # Live per-second counter (client-side math, no contract calls)
 │   ├── Navbar.tsx              # Top navigation
-│   ├── ConnectButton.tsx       # Stellar Wallets Kit connect trigger
+│   ├── ConnectButton.tsx       # Freighter connect trigger (via WalletContext)
 │   └── Providers.tsx           # Context providers tree
 ├── lib/
 │   ├── soroban.ts              # Low-level Soroban RPC: invokeContract, simulateReadOnly, ScVal decoding

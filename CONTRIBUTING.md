@@ -104,7 +104,7 @@ conduit-app/
 │   │   ├── StreamTimeline.tsx   # Horizontal progress timeline
 │   │   ├── RateTicker.tsx       # Live per-second counter
 │   │   └── WithdrawButton.tsx   # Withdraw with pending state
-│   ├── ConnectButton.tsx        # Stellar Wallets Kit trigger
+│   ├── ConnectButton.tsx        # Freighter connect trigger (via WalletContext)
 │   ├── Navbar.tsx
 │   └── Providers.tsx            # Context providers tree
 ├── contexts/
