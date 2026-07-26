@@ -19,6 +19,34 @@ export function toStroops(amount: string, decimals = 7): bigint {
   return BigInt(whole) * BigInt(10 ** decimals) + BigInt(fracPadded);
 }
 
+/**
+ * Returns true if a deposit/duration combination would truncate to a
+ * per-second release rate of exactly zero.
+ *
+ * `depositStroops / durationSeconds` is a bigint division and truncates
+ * toward zero — a small deposit spread over a long duration (e.g. the
+ * default 30-day stream) can silently compute to a rate of 0n, locking
+ * funds into a stream that can never actually release anything. See
+ * issue #243.
+ */
+export function wouldRateTruncateToZero(
+  depositAmount: string,
+  decimals: number,
+  durationSeconds: number,
+): boolean {
+  if (!depositAmount || !Number.isFinite(durationSeconds) || durationSeconds <= 0) {
+    return false;
+  }
+  let depositStroops: bigint;
+  try {
+    depositStroops = toStroops(depositAmount, decimals);
+  } catch {
+    return false;
+  }
+  if (depositStroops <= 0n) return false;
+  return depositStroops / BigInt(Math.floor(durationSeconds)) === 0n;
+}
+
 /** Format a unix timestamp as a locale date-time string */
 export function formatTimestamp(ts: number): string {
   // Use en-US explicitly to avoid hydration mismatch between the server
