@@ -55,6 +55,9 @@ export function WithdrawButton({ streamAddress, withdrawable, token, onSuccess }
       await queryClient.invalidateQueries();
       onSuccess?.();
     } catch (e) {
+      // Always clear the loading state, even if the RPC provider timed out
+      // or the component is still mounted after the async failure — prevents
+      // an infinite spinner (fixes #195).
       if (!mounted.current) return;
       setError(e instanceof Error ? e.message : 'Transaction failed');
       setStep('error');
