@@ -8,14 +8,16 @@ const VALIDATE_TIMEOUT_MS = 15_000;
 
 interface Props {
   onTokenSelected: (token: string) => void;
+  onRefreshNeeded?: () => void;
 }
 
-export function TokenSelector({ onTokenSelected }: Props) {
+export function TokenSelector({ onTokenSelected, onRefreshNeeded }: Props) {
   const [input, setInput] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const mounted = useRef(true);
   const abortRef = useRef<AbortController | null>(null);
+  const selectedRef = useRef<string | null>(null);
 
   useEffect(() => {
     return () => {
@@ -49,6 +51,9 @@ export function TokenSelector({ onTokenSelected }: Props) {
       await simulateReadOnly(address, address, 'decimals', [], { signal, timeoutMs: VALIDATE_TIMEOUT_MS });
       if (!mounted.current) return;
       onTokenSelected(address);
+      selectedRef.current = address;
+      // Signal parent to invalidate stale Apollo cache (#153)
+      onRefreshNeeded?.();
     } catch (err) {
       if (!mounted.current) return;
       const normalized = normalizeError(err);
