@@ -294,7 +294,7 @@ export function WalletProvider({
 
   // ── Operation tracking helper ──────────────────────────────────────────────
 
-  function trackOperation<T>(fn: () => Promise<T>, _signal?: AbortSignal): Promise<T> {
+  function trackOperation<T>(fn: () => Promise<T>): Promise<T> {
     setPendingOperationCount((c) => c + 1);
     return fn().finally(() => {
       if (isMountedRef.current) {
@@ -489,7 +489,7 @@ export function WalletProvider({
         release();
         abortControllerRef.current?.signal.removeEventListener('abort', globalAbortCleanup);
       }
-    }, combinedSignal);
+    });
   }, [publicKey, trackOperation]);
 
   // ── Memoized context value ─────────────────────────────────────────────────
