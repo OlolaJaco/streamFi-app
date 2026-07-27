@@ -314,4 +314,94 @@ describe('BulkWithdrawButton', () => {
     });
     document.body.removeChild(container);
   });
+
+  it('disables button when all streams have invalid addresses', async () => {
+    const streams = [
+      { id: 'bad_1', address: 'not-a-valid-address', info: { withdrawable: 100n } },
+      { id: 'bad_2', address: 'also-invalid', info: { withdrawable: 200n } },
+    ] as any;
+
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(<BulkWithdrawButton activeStreams={streams} />);
+    });
+
+    const button = container.querySelector('button')!;
+    expect(button.disabled).toBe(true);
+
+    act(() => {
+      root.unmount();
+    });
+    document.body.removeChild(container);
+  });
+
+  it('shows exclusion warning when some streams are filtered out', async () => {
+    const streams = [
+      { id: undefined, address: 'CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA', info: { withdrawable: 100n } },
+      makeStream('1', 200n),
+    ] as any;
+
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(<BulkWithdrawButton activeStreams={streams} />);
+    });
+
+    expect(container.textContent).toContain('excluded');
+
+    act(() => {
+      root.unmount();
+    });
+    document.body.removeChild(container);
+  });
+
+  it('does not show exclusion warning when all streams are valid', async () => {
+    const streams = [
+      makeStream('1', 100n),
+      makeStream('A', 200n),
+    ];
+
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(<BulkWithdrawButton activeStreams={streams} />);
+    });
+
+    expect(container.textContent).not.toContain('excluded');
+
+    act(() => {
+      root.unmount();
+    });
+    document.body.removeChild(container);
+  });
+
+  it('button is enabled when at least one stream passes strict validation', async () => {
+    const streams = [
+      { id: undefined, address: 'bad-address', info: { withdrawable: 50n } },
+      makeStream('1', 100n),
+    ] as any;
+
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(<BulkWithdrawButton activeStreams={streams} />);
+    });
+
+    const button = container.querySelector('button')!;
+    expect(button.disabled).toBe(false);
+
+    act(() => {
+      root.unmount();
+    });
+    document.body.removeChild(container);
+  });
 });
