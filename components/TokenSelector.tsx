@@ -17,7 +17,6 @@ export function TokenSelector({ onTokenSelected, onRefreshNeeded }: Props) {
   const [loading, setLoading] = useState(false);
   const mounted = useRef(true);
   const abortRef = useRef<AbortController | null>(null);
-  const selectedRef = useRef<string | null>(null);
 
   useEffect(() => {
     return () => {
@@ -51,7 +50,6 @@ export function TokenSelector({ onTokenSelected, onRefreshNeeded }: Props) {
       await simulateReadOnly(address, address, 'decimals', [], { signal, timeoutMs: VALIDATE_TIMEOUT_MS });
       if (!mounted.current) return;
       onTokenSelected(address);
-      selectedRef.current = address;
       // Signal parent to invalidate stale Apollo cache (#153)
       onRefreshNeeded?.();
     } catch (err) {
