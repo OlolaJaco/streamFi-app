@@ -261,7 +261,7 @@ export function WalletProvider({
   const abortControllerRef = useRef<AbortController | null>(null);
   const semaphoreRef = useRef<Semaphore>(new Semaphore(maxConcurrentOperations));
   const connectMutexRef = useRef<Mutex>(new Mutex());
-  const pendingConnectAbortRef = useRef<AbortController | null>(null); // 👈 ADD THIS LINE
+  const pendingConnectAbortRef = useRef<AbortController | null>(null);
   const router = useRouter();
 
   // Mirrors `publicKey` for use inside the WatchWalletChanges callback below,
