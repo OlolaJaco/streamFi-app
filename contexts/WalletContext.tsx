@@ -463,11 +463,11 @@ export function WalletProvider({
         }
 
         const requestId = pendingRequestIdRef.current;
-        const currentPublicKey = publicKey;
+        const currentPublicKey = publicKeyRef.current;
         const { signedTxXdr, error } = await withTimeout(
           signTransaction(xdr, {
             networkPassphrase: getNetworkPassphrase(),
-            address:           currentPublicKey,
+            address:           currentPublicKey ?? undefined,
           }),
           WALLET_CONNECT_TIMEOUT_MS,
           'Freighter signing',
@@ -477,7 +477,7 @@ export function WalletProvider({
           throw new Error('Operation aborted');
         }
 
-        if (requestId !== pendingRequestIdRef.current || currentPublicKey !== publicKey) {
+        if (requestId !== pendingRequestIdRef.current || currentPublicKey !== publicKeyRef.current) {
           throw new Error('Wallet state changed during signing. Please retry the operation.');
         }
 

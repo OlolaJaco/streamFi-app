@@ -311,6 +311,51 @@ describe('WalletContext', () => {
     document.body.removeChild(container);
   });
 
+  it('rejects signTx with error when the account changes while signing is in flight', async () => {
+    let resolveSign: (value: { signedTxXdr: string; signerAddress: string; error: null }) => void;
+    const signPromise = new Promise<{ signedTxXdr: string; signerAddress: string; error: null }>((resolve) => {
+      resolveSign = resolve;
+    });
+
+    mockedFreighter.isConnected.mockResolvedValue({ isConnected: true });
+    mockedFreighter.requestAccess.mockResolvedValue({ address: 'GAFIRSTACCOUNT', error: null } as any);
+    mockedFreighter.signTransaction.mockReturnValue(signPromise as any);
+
+    const { stateRef, container } = mountWallet();
+
+    await act(async () => {
+      await stateRef.current.connect();
+    });
+
+    const validXdr = 'AAAAAGLm4LZ5F2dO4FQ7AAAAuRz7L5eJ3F9GJ0+5AAAAAA==';
+    let caughtError: Error | null = null;
+
+    let pendingSign: Promise<string>;
+    await act(async () => {
+      pendingSign = stateRef.current.signTx(validXdr).catch((e: Error) => {
+        caughtError = e;
+        return '';
+      });
+    });
+
+    // Account switches mid-signature via Freighter watcher tick
+    const watcher = watchInstances[watchInstances.length - 1];
+    await act(async () => {
+      watcher?.cb?.({ address: 'GASECONDACCOUNT', network: 'TESTNET', networkPassphrase: 'Test SDF Network ; September 2015' });
+    });
+
+    // Now Freighter finishes signing
+    await act(async () => {
+      resolveSign!({ signedTxXdr: 'signed_xdr', signerAddress: 'GAFIRSTACCOUNT', error: null });
+      await pendingSign;
+    });
+
+    expect(caughtError).not.toBeNull();
+    expect(caughtError?.message).toMatch(/Wallet state changed during signing/i);
+
+    document.body.removeChild(container);
+  });
+
   // TODO.md Phase 4, item 15 — the Mutex/queue-based concurrency work in
   // signTx has no test exercising it under real concurrent load.
   it('processes 100 concurrent signTx() calls without exceeding the concurrency limit or dropping any', async () => {
