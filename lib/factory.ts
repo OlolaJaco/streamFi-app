@@ -29,11 +29,18 @@ function isDemoMode(): boolean {
 function isMock(): boolean {
   if (isDemoMode()) return true;
 
-  // Keep the app usable in fresh/local environments where the factory
-  // contract has not been configured yet. The read helpers and createStream
-  // already return deterministic mock data when this function returns true;
-  // throwing here blanked pages before they had a chance to render fallback UI.
-  return !FACTORY();
+  // #279 — require NEXT_PUBLIC_DEMO_MODE=true explicitly rather than
+  // silently falling back to mock data whenever the factory contract ID is
+  // unset. A misconfigured production deploy should fail loudly, not serve
+  // fake data to real users with no indication anything is wrong.
+  const id = FACTORY();
+  if (!id) {
+    throw new Error(
+      'NEXT_PUBLIC_FACTORY_CONTRACT_ID is not set. ' +
+      'Set it in .env.local, or set NEXT_PUBLIC_DEMO_MODE=true to run in demo mode with fake data.'
+    );
+  }
+  return false;
 }
 
 const MAX_U32 = 0xffff_ffff;
