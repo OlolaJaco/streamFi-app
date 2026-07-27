@@ -91,6 +91,27 @@ describe('WalletContext', () => {
     useTransactionStore.setState({ transactions: {}, order: [] });
   });
 
+  it('restores a valid stored wallet session on mount', () => {
+    localStorage.setItem(
+      'conduit:wallet',
+      JSON.stringify({ key: 'GVALID123', name: 'Freighter', expiresAt: Date.now() + 60000 }),
+    );
+    const { stateRef, container } = mountWallet();
+    expect(stateRef.current?.publicKey).toBe('GVALID123');
+    document.body.removeChild(container);
+  });
+
+  it('purges an expired stored wallet session on mount instead of restoring it', () => {
+    localStorage.setItem(
+      'conduit:wallet',
+      JSON.stringify({ key: 'GEXPIRED123', name: 'Freighter', expiresAt: Date.now() - 10000 }),
+    );
+    const { stateRef, container } = mountWallet();
+    expect(stateRef.current?.publicKey).toBe(null);
+    expect(localStorage.getItem('conduit:wallet')).toBeNull();
+    document.body.removeChild(container);
+  });
+
   it('prevents stale async connection state from applying after disconnect', async () => {
     let resolveConnect: (value: { address: string; error: null }) => void;
     const connectPromise = new Promise<{ address: string; error: null }>((resolve) => {
