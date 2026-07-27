@@ -4,7 +4,7 @@ import React, { useEffect } from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createRoot } from 'react-dom/client';
 import { act } from 'react';
-import { WalletProvider, useWallet, Mutex } from './WalletContext';
+import { WalletProvider, useWallet, Mutex, Semaphore } from './WalletContext';
 import * as freighter from '@stellar/freighter-api';
 import { queryClient } from '@/lib/queryClient';
 import { useTransactionStore } from '@/lib/store';
@@ -451,9 +451,129 @@ describe('Mutex — queued acquire under load', () => {
   });
 });
 
+describe('Semaphore — unit tests', () => {
+  it('enforces minimum concurrency limit of 1', () => {
+    const sem0 = new Semaphore(0);
+    expect(sem0.availablePermits).toBe(1);
+
+    const semNeg = new Semaphore(-5);
+    expect(semNeg.availablePermits).toBe(1);
+  });
+
+  it('allows immediate acquisition up to configured concurrency limit', async () => {
+    const sem = new Semaphore(3);
+    expect(sem.availablePermits).toBe(3);
+    expect(sem.pendingCount).toBe(0);
+
+    const rel1 = await sem.acquire();
+    expect(sem.availablePermits).toBe(2);
+    expect(sem.pendingCount).toBe(0);
+
+    const rel2 = await sem.acquire();
+    const rel3 = await sem.acquire();
+    expect(sem.availablePermits).toBe(0);
+    expect(sem.pendingCount).toBe(0);
+
+    rel1();
+    expect(sem.availablePermits).toBe(1);
+    rel2();
+    rel3();
+    expect(sem.availablePermits).toBe(3);
+  });
+
+  it('queues callers when concurrency limit is reached and grants access in FIFO release ordering', async () => {
+    const sem = new Semaphore(2);
+    const rel1 = await sem.acquire();
+    const rel2 = await sem.acquire();
+
+    expect(sem.availablePermits).toBe(0);
+
+    const order: number[] = [];
+    const p3 = sem.acquire().then((rel) => {
+      order.push(3);
+      return rel;
+    });
+    const p4 = sem.acquire().then((rel) => {
+      order.push(4);
+      return rel;
+    });
+
+    expect(sem.pendingCount).toBe(2);
+    expect(order).toEqual([]);
+
+    // Release first permit -> p3 resolves
+    rel1();
+    const rel3 = await p3;
+    expect(order).toEqual([3]);
+    expect(sem.pendingCount).toBe(1);
+
+    // Release second permit -> p4 resolves
+    rel2();
+    const rel4 = await p4;
+    expect(order).toEqual([3, 4]);
+    expect(sem.pendingCount).toBe(0);
+
+    rel3();
+    rel4();
+    expect(sem.availablePermits).toBe(2);
+  });
+
+  it('rejects a queued waiter when its AbortSignal fires, without corrupting the queue', async () => {
+    const sem = new Semaphore(1);
+    const release1 = await sem.acquire();
+
+    const controller = new AbortController();
+    const queuedAcquire = sem.acquire(controller.signal);
+
+    expect(sem.pendingCount).toBe(1);
+
+    controller.abort();
+    await expect(queuedAcquire).rejects.toThrow(/aborted/i);
+    expect(sem.pendingCount).toBe(0);
+
+    // The semaphore must still be usable afterwards — the aborted entry should
+    // have been cleanly removed from the queue, not left dangling.
+    let acquired2 = false;
+    const p2 = sem.acquire().then((rel) => {
+      acquired2 = true;
+      return rel;
+    });
+
+    release1();
+    const release2 = await p2;
+    expect(acquired2).toBe(true);
+    release2();
+  });
+
+  it('handles abort of a middle queued waiter without interrupting other queued waiters', async () => {
+    const sem = new Semaphore(1);
+    const release1 = await sem.acquire();
+
+    const p2 = sem.acquire();
+    const controller3 = new AbortController();
+    const p3 = sem.acquire(controller3.signal);
+    const p4 = sem.acquire();
+
+    expect(sem.pendingCount).toBe(3);
+
+    // Abort p3 in middle of queue
+    controller3.abort();
+    await expect(p3).rejects.toThrow(/aborted/i);
+    expect(sem.pendingCount).toBe(2);
+
+    // Release 1 -> p2 should get acquired
+    release1();
+    const release2 = await p2;
+
+    // Release 2 -> p4 should get acquired
+    release2();
+    const release4 = await p4;
+    expect(typeof release4).toBe('function');
+    release4();
+  });
+});
+
 describe('Semaphore — queue overflow and rate limiting', () => {
-  // The Semaphore class is not exported directly, but we can test its behavior
-  // through the WalletProvider's signTx method, which uses a Semaphore internally.
   // We test the overflow scenario by enqueueing more operations than maxConcurrentOperations.
 
   it('queues all signTx calls when max concurrency is exceeded, dropping none', async () => {

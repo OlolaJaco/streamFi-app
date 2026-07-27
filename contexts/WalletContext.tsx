@@ -102,7 +102,7 @@ export class Mutex {
  * A bounded Semaphore that limits concurrent operation count.
  * Default max concurrency is 5, configurable via maxConcurrentOperations.
  */
-class Semaphore {
+export class Semaphore {
   private _available: number;
   private _queue: Array<{
     resolver: (release: () => void) => void;
