@@ -328,12 +328,15 @@ describe('WalletContext', () => {
     });
 
     const validXdr = 'AAAAAGLm4LZ5F2dO4FQ7AAAAuRz7L5eJ3F9GJ0+5AAAAAA==';
-    let caughtError: Error | null = null;
+    // An object ref (rather than a bare `let`) sidesteps a TS control-flow
+    // narrowing quirk where a `let` only ever reassigned inside a nested
+    // async closure gets narrowed to `never` at the read site below.
+    const errorRef: { current: Error | null } = { current: null };
 
     let pendingSign: Promise<string>;
     await act(async () => {
       pendingSign = stateRef.current.signTx(validXdr).catch((e: Error) => {
-        caughtError = e;
+        errorRef.current = e;
         return '';
       });
     });
@@ -350,8 +353,8 @@ describe('WalletContext', () => {
       await pendingSign;
     });
 
-    expect(caughtError).not.toBeNull();
-    expect(caughtError?.message).toMatch(/Wallet state changed during signing/i);
+    expect(errorRef.current).not.toBeNull();
+    expect(errorRef.current?.message).toMatch(/Wallet state changed during signing/i);
 
     document.body.removeChild(container);
   });
